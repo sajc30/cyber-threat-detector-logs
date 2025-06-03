@@ -173,10 +173,10 @@ class CybersecurityFeatureExtractor:
             clean_name = log_type.replace(' ', '_').replace('-', '_')
             df[f'is_{clean_name}'] = (df['log_type'] == log_type).astype(int)
         
-        # Source-specific risk factors
-        df['kdd_network_risk'] = df['is_kdd'] * df['risk_score']
-        df['ait_system_risk'] = df['is_ait'] * df['anomaly_indicator']
-        df['loghub_auth_risk'] = df['is_loghub'] * df['has_auth'] * df['has_error']
+        # Source-specific risk factors (handle missing columns gracefully)
+        df['kdd_network_risk'] = (df['is_kdd'] if 'is_kdd' in df.columns else 0) * df['risk_score']
+        df['ait_system_risk'] = (df['is_ait'] if 'is_ait' in df.columns else 0) * df['anomaly_indicator']
+        df['loghub_auth_risk'] = (df['is_loghub'] if 'is_loghub' in df.columns else 0) * df['has_auth'] * df['has_error']
         
         return df
     
