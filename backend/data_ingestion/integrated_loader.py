@@ -1,6 +1,6 @@
 """
-Integrated Dataset Loader for Cybersecurity Threat Detection
-This module combines multiple cybersecurity datasets:
+Optimized Integrated Dataset Loader for Cybersecurity Threat Detection
+This module combines multiple cybersecurity datasets efficiently:
 1. LogHub (system logs)
 2. AIT-LDS (expert-labeled attack scenarios) 
 3. KDD Cup 99 (network intrusion detection)
@@ -17,13 +17,15 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 import logging
+from tqdm import tqdm
+import random
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class IntegratedDatasetLoader:
+class OptimizedIntegratedLoader:
     """
-    Loads and integrates multiple cybersecurity datasets
+    Optimized loader for multiple cybersecurity datasets
     """
     
     def __init__(self, data_root: str = "../../data"):
@@ -32,21 +34,30 @@ class IntegratedDatasetLoader:
         self.processed_path = self.data_root / "processed"
         self.datasets = {}
         
+        # Optimization settings
+        self.max_ait_records = 20000  # Limit AIT records for speed
+        self.max_kdd_records = 25000  # Limit KDD records
+        self.max_loghub_records = 10000  # Use existing LogHub data
+        
     def load_all_datasets(self) -> Dict[str, pd.DataFrame]:
-        """Load and integrate all available datasets"""
-        logger.info("🔄 Loading integrated cybersecurity datasets...")
+        """Load and integrate all available datasets with optimizations"""
+        logger.info("🚀 Loading integrated cybersecurity datasets (OPTIMIZED)...")
         
         # 1. Load LogHub data (already processed)
+        logger.info("📁 Loading LogHub data...")
         loghub_data = self._load_loghub_processed()
         
-        # 2. Load AIT dataset
-        ait_data = self._load_ait_dataset()
+        # 2. Load AIT dataset (optimized)
+        logger.info("📁 Loading AIT dataset (optimized)...")
+        ait_data = self._load_ait_dataset_optimized()
         
-        # 3. Load KDD Cup 99 network data
-        kdd_data = self._load_kdd_dataset()
+        # 3. Load KDD Cup 99 network data (optimized)
+        logger.info("📁 Loading KDD dataset (optimized)...")
+        kdd_data = self._load_kdd_dataset_optimized()
         
         # 4. Create unified feature space
-        unified_data = self._create_unified_features(loghub_data, ait_data, kdd_data)
+        logger.info("🔧 Creating unified feature space...")
+        unified_data = self._create_unified_features_optimized(loghub_data, ait_data, kdd_data)
         
         return unified_data
     
@@ -55,7 +66,7 @@ class IntegratedDatasetLoader:
         try:
             train_file = self.processed_path / "train_features.csv"
             if train_file.exists():
-                df = pd.read_csv(train_file)
+                df = pd.read_csv(train_file, nrows=self.max_loghub_records)
                 logger.info(f"✅ LogHub: {len(df)} records loaded")
                 return df
             else:
@@ -65,8 +76,8 @@ class IntegratedDatasetLoader:
             logger.error(f"❌ Error loading LogHub: {e}")
             return None
     
-    def _load_ait_dataset(self) -> Optional[pd.DataFrame]:
-        """Load and process AIT-LDS dataset"""
+    def _load_ait_dataset_optimized(self) -> Optional[pd.DataFrame]:
+        """Load and process AIT-LDS dataset with optimizations"""
         try:
             ait_path = self.raw_path / "data"
             if not ait_path.exists():
@@ -76,53 +87,44 @@ class IntegratedDatasetLoader:
             records = []
             attack_count = 0
             
-            # Process each mail server
-            for server_dir in ait_path.glob("mail.*"):
+            # Cache all label files in memory first (OPTIMIZATION)
+            logger.info("🗂️ Caching AIT label files...")
+            label_cache = self._cache_ait_labels()
+            
+            # Process only first 2 mail servers for speed (OPTIMIZATION)
+            server_dirs = list(ait_path.glob("mail.*"))[:2]  
+            logger.info(f"📊 Processing {len(server_dirs)} servers...")
+            
+            for server_dir in tqdm(server_dirs, desc="Processing servers"):
                 server_name = server_dir.name
                 
-                # Load authentication logs
+                # Process authentication logs (SAMPLED)
                 auth_log = server_dir / "auth.log"
                 if auth_log.exists():
-                    with open(auth_log, 'r') as f:
-                        for line_no, line in enumerate(f, 1):
-                            line = line.strip()
-                            if line:
-                                is_attack = self._check_ait_attack_label(server_name, "auth.log", line_no)
-                                features = self._extract_ait_features(line, "auth")
-                                features.update({
-                                    'source': 'AIT',
-                                    'server': server_name,
-                                    'log_type': 'authentication',
-                                    'is_attack': is_attack,
-                                    'attack_score': 0.9 if is_attack else 0.1
-                                })
-                                records.append(features)
-                                if is_attack:
-                                    attack_count += 1
+                    auth_records = self._process_log_file_sampled(
+                        auth_log, server_name, "auth.log", "authentication", 
+                        label_cache, max_records=5000
+                    )
+                    records.extend(auth_records)
+                    attack_count += sum(1 for r in auth_records if r.get('is_attack', False))
                 
-                # Load Apache logs
+                # Process Apache logs (SAMPLED)
                 apache_dir = server_dir / "apache2"
                 if apache_dir.exists():
-                    for log_file in apache_dir.glob("*.log"):
-                        with open(log_file, 'r') as f:
-                            for line_no, line in enumerate(f, 1):
-                                line = line.strip()
-                                if line and len(records) < 50000:  # Limit for memory
-                                    is_attack = self._check_ait_attack_label(server_name, f"apache2/{log_file.name}", line_no)
-                                    features = self._extract_ait_features(line, "apache")
-                                    features.update({
-                                        'source': 'AIT',
-                                        'server': server_name,
-                                        'log_type': 'web_server',
-                                        'is_attack': is_attack,
-                                        'attack_score': 0.8 if is_attack else 0.2
-                                    })
-                                    records.append(features)
-                                    if is_attack:
-                                        attack_count += 1
+                    for log_file in list(apache_dir.glob("*.log"))[:2]:  # Only first 2 files
+                        apache_records = self._process_log_file_sampled(
+                            log_file, server_name, f"apache2/{log_file.name}", 
+                            "web_server", label_cache, max_records=3000
+                        )
+                        records.extend(apache_records)
+                        attack_count += sum(1 for r in apache_records if r.get('is_attack', False))
+                
+                # Stop if we have enough records
+                if len(records) >= self.max_ait_records:
+                    break
             
             if records:
-                df = pd.DataFrame(records)
+                df = pd.DataFrame(records[:self.max_ait_records])  # Ensure we don't exceed limit
                 logger.info(f"✅ AIT Dataset: {len(df)} records, {attack_count} attacks ({attack_count/len(df)*100:.1f}%)")
                 return df
             else:
@@ -133,52 +135,129 @@ class IntegratedDatasetLoader:
             logger.error(f"❌ Error loading AIT dataset: {e}")
             return None
     
-    def _check_ait_attack_label(self, server: str, log_file: str, line_no: int) -> bool:
-        """Check if a log line is labeled as an attack in AIT dataset"""
+    def _cache_ait_labels(self) -> Dict:
+        """Cache all AIT label files in memory for fast lookup"""
+        label_cache = {}
+        labels_path = self.raw_path / "labels"
+        
+        if not labels_path.exists():
+            return label_cache
+        
         try:
-            labels_path = self.raw_path / "labels" / server / log_file
-            if labels_path.exists():
-                with open(labels_path, 'r') as f:
-                    for line in f:
-                        try:
-                            label_data = json.loads(line.strip())
-                            if label_data.get('line') == line_no:
-                                return True
-                        except:
-                            continue
-            return False
-        except:
-            return False
+            for server_dir in labels_path.glob("mail.*"):
+                server_name = server_dir.name
+                label_cache[server_name] = {}
+                
+                # Cache auth.log labels
+                auth_labels = server_dir / "auth.log"
+                if auth_labels.exists():
+                    label_cache[server_name]["auth.log"] = self._load_label_file(auth_labels)
+                
+                # Cache apache labels
+                apache2_dir = server_dir / "apache2"
+                if apache2_dir.exists():
+                    for label_file in apache2_dir.glob("*.log"):
+                        key = f"apache2/{label_file.name}"
+                        label_cache[server_name][key] = self._load_label_file(label_file)
+        
+        except Exception as e:
+            logger.warning(f"⚠️ Error caching labels: {e}")
+        
+        return label_cache
     
-    def _extract_ait_features(self, log_line: str, log_type: str) -> Dict:
-        """Extract features from AIT log lines"""
+    def _load_label_file(self, label_file: Path) -> set:
+        """Load a label file and return set of attack line numbers"""
+        attack_lines = set()
+        try:
+            with open(label_file, 'r') as f:
+                for line in f:
+                    try:
+                        label_data = json.loads(line.strip())
+                        attack_lines.add(label_data.get('line'))
+                    except:
+                        continue
+        except:
+            pass
+        return attack_lines
+    
+    def _process_log_file_sampled(self, log_file: Path, server_name: str, 
+                                 log_key: str, log_type: str, label_cache: Dict, 
+                                 max_records: int = 5000) -> List[Dict]:
+        """Process a log file with sampling for speed"""
+        records = []
+        attack_lines = label_cache.get(server_name, {}).get(log_key, set())
+        
+        try:
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Sample lines for processing (OPTIMIZATION)
+            if len(lines) > max_records:
+                # Ensure we get some attack samples
+                attack_indices = [i for i, _ in enumerate(lines, 1) if i in attack_lines]
+                normal_indices = [i for i in range(len(lines)) if (i + 1) not in attack_lines]
+                
+                # Sample both attack and normal lines
+                sample_attack = random.sample(attack_indices, min(len(attack_indices), max_records // 4))
+                sample_normal = random.sample(normal_indices, max_records - len(sample_attack))
+                
+                selected_indices = sorted(sample_attack + sample_normal)
+            else:
+                selected_indices = list(range(len(lines)))
+            
+            for idx in selected_indices:
+                line_no = idx + 1
+                line = lines[idx].strip()
+                
+                if line:
+                    is_attack = line_no in attack_lines
+                    features = self._extract_ait_features_fast(line, log_type)
+                    features.update({
+                        'source': 'AIT',
+                        'server': server_name,
+                        'log_type': log_type,
+                        'is_attack': is_attack,
+                        'attack_score': 0.9 if is_attack else 0.1
+                    })
+                    records.append(features)
+                    
+        except Exception as e:
+            logger.warning(f"⚠️ Error processing {log_file}: {e}")
+        
+        return records
+    
+    def _extract_ait_features_fast(self, log_line: str, log_type: str) -> Dict:
+        """Fast feature extraction from AIT log lines"""
+        # Pre-compute common checks
+        line_lower = log_line.lower()
+        
         features = {
-            'raw_message': log_line[:500],  # Truncate long messages
+            'raw_message': log_line[:200],  # Shorter for speed
             'message_length': len(log_line),
-            'has_ip': 1 if any(c.isdigit() and '.' in log_line for c in [log_line]) else 0,
-            'has_error': 1 if any(word in log_line.lower() for word in ['error', 'fail', 'deny', 'invalid']) else 0,
-            'has_auth': 1 if any(word in log_line.lower() for word in ['auth', 'login', 'password', 'user']) else 0,
-            'entropy': self._calculate_entropy(log_line),
+            'has_ip': 1 if '.' in log_line and any(c.isdigit() for c in log_line) else 0,
+            'has_error': 1 if any(word in line_lower for word in ['error', 'fail', 'deny', 'invalid']) else 0,
+            'has_auth': 1 if any(word in line_lower for word in ['auth', 'login', 'password', 'user']) else 0,
+            'entropy': min(len(set(log_line)) / len(log_line) * 8, 8.0) if log_line else 0.0,  # Fast entropy approximation
         }
         
-        if log_type == "auth":
+        if log_type == "authentication":
             features.update({
-                'has_session': 1 if 'session' in log_line.lower() else 0,
-                'has_pam': 1 if 'pam' in log_line.lower() else 0,
-                'has_cron': 1 if 'cron' in log_line.lower() else 0,
+                'has_session': 1 if 'session' in line_lower else 0,
+                'has_pam': 1 if 'pam' in line_lower else 0,
+                'has_cron': 1 if 'cron' in line_lower else 0,
             })
-        elif log_type == "apache":
+        elif log_type == "web_server":
             features.update({
                 'has_post': 1 if 'POST' in log_line else 0,
                 'has_get': 1 if 'GET' in log_line else 0,
                 'has_404': 1 if '404' in log_line else 0,
-                'has_php': 1 if 'php' in log_line.lower() else 0,
+                'has_php': 1 if 'php' in line_lower else 0,
             })
         
         return features
     
-    def _load_kdd_dataset(self) -> Optional[pd.DataFrame]:
-        """Load and process KDD Cup 99 dataset"""
+    def _load_kdd_dataset_optimized(self) -> Optional[pd.DataFrame]:
+        """Load and process KDD Cup 99 dataset with optimizations"""
         try:
             kdd_file = self.raw_path / "network_intrusion" / "kddcup.data_10_percent"
             if not kdd_file.exists():
@@ -199,8 +278,8 @@ class IntegratedDatasetLoader:
                 'dst_host_rerror_rate', 'dst_host_srv_rerror_rate', 'attack_type'
             ]
             
-            # Read subset for memory efficiency
-            df = pd.read_csv(kdd_file, names=feature_names, nrows=50000)
+            # Read limited subset for speed (OPTIMIZATION)
+            df = pd.read_csv(kdd_file, names=feature_names, nrows=self.max_kdd_records)
             
             # Process attack labels
             df['is_attack'] = df['attack_type'] != 'normal.'
@@ -208,7 +287,7 @@ class IntegratedDatasetLoader:
             df['source'] = 'KDD'
             df['log_type'] = 'network_traffic'
             
-            # Map attack types to severity
+            # Map attack types to severity (vectorized for speed)
             attack_severity = {
                 'normal.': 0.0,
                 'smurf.': 0.7, 'neptune.': 0.8, 'back.': 0.6,  # DoS attacks
@@ -227,16 +306,17 @@ class IntegratedDatasetLoader:
             logger.error(f"❌ Error loading KDD dataset: {e}")
             return None
     
-    def _create_unified_features(self, loghub_df: Optional[pd.DataFrame], 
-                                ait_df: Optional[pd.DataFrame], 
-                                kdd_df: Optional[pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-        """Create unified feature space across all datasets"""
+    def _create_unified_features_optimized(self, loghub_df: Optional[pd.DataFrame], 
+                                         ait_df: Optional[pd.DataFrame], 
+                                         kdd_df: Optional[pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+        """Create unified feature space with optimizations"""
         
         unified_records = []
         
         # Process LogHub data
         if loghub_df is not None:
-            for _, row in loghub_df.iterrows():
+            logger.info(f"🔧 Processing {len(loghub_df)} LogHub records...")
+            for _, row in tqdm(loghub_df.iterrows(), total=len(loghub_df), desc="LogHub"):
                 unified_records.append({
                     'source': 'LogHub',
                     'log_type': row.get('log_type', 'system'),
@@ -248,12 +328,13 @@ class IntegratedDatasetLoader:
                     'has_auth': row.get('has_authentication', 0),
                     'entropy': row.get('entropy', 0.0),
                     'severity_score': row.get('suspicious_score', 0.0),
-                    'raw_message': str(row.get('raw_log', ''))[:500]
+                    'raw_message': str(row.get('raw_log', ''))[:200]
                 })
         
         # Process AIT data
         if ait_df is not None:
-            for _, row in ait_df.iterrows():
+            logger.info(f"🔧 Processing {len(ait_df)} AIT records...")
+            for _, row in tqdm(ait_df.iterrows(), total=len(ait_df), desc="AIT"):
                 unified_records.append({
                     'source': 'AIT',
                     'log_type': row.get('log_type', 'system'),
@@ -265,30 +346,33 @@ class IntegratedDatasetLoader:
                     'has_auth': row.get('has_auth', 0),
                     'entropy': row.get('entropy', 0.0),
                     'severity_score': row.get('attack_score', 0.0),
-                    'raw_message': str(row.get('raw_message', ''))[:500]
+                    'raw_message': str(row.get('raw_message', ''))[:200]
                 })
         
-        # Process KDD data (sample to balance dataset size)
+        # Process KDD data (vectorized for speed)
         if kdd_df is not None:
-            # Sample KDD data to balance with other datasets
-            kdd_sample = kdd_df.sample(n=min(len(kdd_df), 10000), random_state=42)
-            for _, row in kdd_sample.iterrows():
-                unified_records.append({
-                    'source': 'KDD',
-                    'log_type': 'network_traffic',
-                    'is_attack': row.get('is_attack', False),
-                    'attack_score': row.get('attack_score', 0.0),
-                    'message_length': len(str(row.get('attack_type', ''))),
-                    'has_ip': 1,  # Network data always has IP info
-                    'has_error': 1 if row.get('wrong_fragment', 0) > 0 else 0,
-                    'has_auth': 1 if row.get('logged_in', 0) > 0 else 0,
-                    'entropy': min(row.get('duration', 0) / 1000.0, 1.0),  # Normalize duration as entropy proxy
-                    'severity_score': row.get('severity_score', 0.0),
-                    'raw_message': f"Network: {row.get('protocol_type', '')} {row.get('service', '')} {row.get('flag', '')}"
-                })
+            logger.info(f"🔧 Processing {len(kdd_df)} KDD records...")
+            
+            # Vectorized processing for speed
+            kdd_unified = pd.DataFrame({
+                'source': 'KDD',
+                'log_type': 'network_traffic',
+                'is_attack': kdd_df['is_attack'],
+                'attack_score': kdd_df['attack_score'],
+                'message_length': kdd_df['attack_type'].str.len(),
+                'has_ip': 1,
+                'has_error': (kdd_df['wrong_fragment'] > 0).astype(int),
+                'has_auth': (kdd_df['logged_in'] > 0).astype(int),
+                'entropy': np.clip(kdd_df['duration'] / 1000.0, 0, 1),
+                'severity_score': kdd_df['severity_score'],
+                'raw_message': kdd_df['protocol_type'].astype(str) + " " + kdd_df['service'].astype(str)
+            })
+            
+            unified_records.extend(kdd_unified.to_dict('records'))
         
         # Create final unified dataset
         if unified_records:
+            logger.info("🔧 Creating final unified dataset...")
             unified_df = pd.DataFrame(unified_records)
             
             # Split into train/validation/test
@@ -307,7 +391,7 @@ class IntegratedDatasetLoader:
             attack_rate = total_attacks / len(unified_df) * 100
             
             logger.info(f"""
-🎉 UNIFIED CYBERSECURITY DATASET CREATED!
+🎉 OPTIMIZED UNIFIED CYBERSECURITY DATASET CREATED!
 📊 Total Records: {len(unified_df):,}
 🚨 Attack Records: {total_attacks:,} ({attack_rate:.1f}%)
 📈 Training Set: {len(train_df):,} records
@@ -316,9 +400,10 @@ class IntegratedDatasetLoader:
 
 📋 Data Sources:
 - LogHub: System logs (Linux, SSH, Apache, Windows)
-- AIT-LDS: Expert-labeled attack scenarios
-- KDD Cup 99: Network intrusion patterns
+- AIT-LDS: Expert-labeled attack scenarios (SAMPLED)
+- KDD Cup 99: Network intrusion patterns (SAMPLED)
 
+⚡ OPTIMIZED: Fast processing with representative sampling
 🎯 READY FOR PHASE 2: FEATURE ENGINEERING & MODEL TRAINING!
             """)
             
@@ -332,26 +417,6 @@ class IntegratedDatasetLoader:
             logger.error("❌ No data could be loaded from any source")
             return {}
     
-    def _calculate_entropy(self, text: str) -> float:
-        """Calculate Shannon entropy of text"""
-        if not text:
-            return 0.0
-        
-        # Count character frequencies
-        char_counts = {}
-        for char in text:
-            char_counts[char] = char_counts.get(char, 0) + 1
-        
-        # Calculate entropy
-        length = len(text)
-        entropy = 0.0
-        for count in char_counts.values():
-            p = count / length
-            if p > 0:
-                entropy -= p * np.log2(p)
-        
-        return min(entropy, 8.0)  # Cap at 8 bits
-    
     def save_unified_dataset(self, datasets: Dict[str, pd.DataFrame], 
                            output_dir: str = "../../data/processed") -> None:
         """Save the unified dataset"""
@@ -359,39 +424,49 @@ class IntegratedDatasetLoader:
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
             
+            logger.info("💾 Saving unified datasets...")
             for split_name, df in datasets.items():
                 if df is not None and len(df) > 0:
                     output_file = output_path / f"unified_{split_name}.csv"
                     df.to_csv(output_file, index=False)
-                    logger.info(f"💾 Saved {split_name}: {output_file}")
+                    logger.info(f"✅ Saved {split_name}: {output_file} ({len(df)} records)")
             
             # Save dataset metadata
             metadata = {
                 'created_at': datetime.now().isoformat(),
                 'total_records': len(datasets.get('full', [])),
                 'attack_rate': float(datasets.get('full', pd.DataFrame()).get('is_attack', pd.Series()).mean() or 0),
-                'sources': ['LogHub', 'AIT-LDS', 'KDD Cup 99'],
-                'splits': {name: len(df) for name, df in datasets.items() if df is not None}
+                'sources': ['LogHub', 'AIT-LDS (sampled)', 'KDD Cup 99 (sampled)'],
+                'splits': {name: len(df) for name, df in datasets.items() if df is not None},
+                'optimization': 'Enabled - Representative sampling for speed'
             }
             
             with open(output_path / "unified_metadata.json", 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            logger.info("✅ Unified dataset saved successfully!")
+            logger.info("✅ Optimized unified dataset saved successfully!")
             
         except Exception as e:
             logger.error(f"❌ Error saving unified dataset: {e}")
 
 def main():
-    """Run the integrated data loader"""
-    loader = IntegratedDatasetLoader()
+    """Run the optimized integrated data loader"""
+    print("🚀 Starting Optimized Cybersecurity Data Integration...")
+    print("⚡ Optimizations: Sampling, caching, progress indicators")
+    print("⏱️ Expected time: 3-5 minutes\n")
+    
+    loader = OptimizedIntegratedLoader()
     datasets = loader.load_all_datasets()
     
     if datasets:
         loader.save_unified_dataset(datasets)
-        print("\n🎉 Phase 1 Complete! Ready for Phase 2: Feature Engineering & Model Training")
+        print("\n🎉 PHASE 1 COMPLETE! ✅")
+        print("🎯 Ready for Phase 2: Feature Engineering & Model Training")
+        print("📁 Datasets saved in: data/processed/")
+        return True
     else:
         print("❌ Failed to create unified dataset")
+        return False
 
 if __name__ == "__main__":
-    main() 
+    success = main() 

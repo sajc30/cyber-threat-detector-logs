@@ -1,268 +1,382 @@
 """
-Feature Extraction Module for Log Sequence Processing
+Enhanced Feature Extractor for Cybersecurity Threat Detection
+Processes unified dataset from LogHub, AIT-LDS, and KDD Cup 99
 
-This module handles tokenization, vocabulary building, and sequence
-generation for the LSTM autoencoder. Will be implemented during
-Phase 2: Feature Engineering & Model Prototype.
+Features extracted:
+- Statistical features from log content
+- Temporal patterns
+- Behavioral anomaly indicators
+- Network traffic characteristics
+- Text-based cybersecurity features
+
+Author: AI Cybersecurity System
 """
 
-import re
-import json
-import pickle
-from collections import Counter, defaultdict
-from typing import List, Dict, Tuple, Optional
+import pandas as pd
 import numpy as np
+import torch
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.feature_selection import SelectKBest, f_classif
+from typing import Dict, List, Tuple, Optional
+import re
+import logging
+from pathlib import Path
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class LogTokenizer:
-    """Tokenizer for log messages."""
+class CybersecurityFeatureExtractor:
+    """
+    Advanced feature extractor for cybersecurity threat detection
+    """
     
-    def __init__(self, vocab_size: int = 10000, min_freq: int = 2):
+    def __init__(self, sequence_length: int = 50, selected_features: int = 30):
+        self.sequence_length = sequence_length
+        self.selected_features = selected_features
+        self.scaler = StandardScaler()
+        self.label_encoders = {}
+        self.feature_selector = SelectKBest(f_classif, k=selected_features)
+        self.feature_names = []
+        self.is_fitted = False
+        
+    def extract_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Initialize the tokenizer.
-        
-        Args:
-            vocab_size: Maximum vocabulary size
-            min_freq: Minimum frequency for a token to be included
+        Extract comprehensive cybersecurity features from unified dataset
         """
-        self.vocab_size = vocab_size
-        self.min_freq = min_freq
-        self.token_to_id: Dict[str, int] = {}
-        self.id_to_token: Dict[int, str] = {}
-        self.token_freq: Counter = Counter()
+        logger.info(f"🔧 Extracting features from {len(df)} records...")
         
-        # Special tokens
-        self.PAD_TOKEN = "<PAD>"
-        self.UNK_TOKEN = "<UNK>"
-        self.START_TOKEN = "<START>"
-        self.END_TOKEN = "<END>"
+        # Start with existing features
+        features_df = df.copy()
         
-    def tokenize(self, message: str) -> List[str]:
-        """
-        Tokenize a log message.
+        # 1. Text-based features
+        features_df = self._add_text_features(features_df)
         
-        Args:
-            message: Raw log message string
-            
-        Returns:
-            List of tokens
-            
-        TODO: Phase 2 implementation
-        - Clean and normalize message
-        - Split on whitespace and punctuation
-        - Handle special characters and numbers
-        - Extract meaningful log components
-        """
-        print(f"TODO: Tokenize message: {message[:50]}...")
+        # 2. Statistical features
+        features_df = self._add_statistical_features(features_df)
         
-        # Placeholder tokenization
-        tokens = re.split(r'\W+', message.lower())
-        tokens = [token for token in tokens if token and len(token) > 1]
-        return tokens
+        # 3. Behavioral features
+        features_df = self._add_behavioral_features(features_df)
         
-    def build_vocabulary(self, messages: List[str]):
-        """
-        Build vocabulary from a corpus of log messages.
+        # 4. Source-specific features
+        features_df = self._add_source_specific_features(features_df)
         
-        Args:
-            messages: List of log message strings
-            
-        TODO: Phase 2 implementation
-        - Tokenize all messages
-        - Count token frequencies
-        - Select top tokens by frequency
-        - Create token-to-ID mappings
-        """
-        print(f"TODO: Build vocabulary from {len(messages)} messages")
+        # 5. Engineered interaction features
+        features_df = self._add_interaction_features(features_df)
         
-        # Placeholder vocabulary
-        special_tokens = [self.PAD_TOKEN, self.UNK_TOKEN, self.START_TOKEN, self.END_TOKEN]
-        
-        for i, token in enumerate(special_tokens):
-            self.token_to_id[token] = i
-            self.id_to_token[i] = token
-            
-        # TODO: Add real tokens from corpus
-        
-    def encode(self, tokens: List[str]) -> List[int]:
-        """
-        Convert tokens to token IDs.
-        
-        Args:
-            tokens: List of token strings
-            
-        Returns:
-            List of token IDs
-        """
-        ids = []
-        for token in tokens:
-            token_id = self.token_to_id.get(token, self.token_to_id[self.UNK_TOKEN])
-            ids.append(token_id)
-        return ids
-        
-    def decode(self, token_ids: List[int]) -> List[str]:
-        """
-        Convert token IDs back to tokens.
-        
-        Args:
-            token_ids: List of token IDs
-            
-        Returns:
-            List of token strings
-        """
-        tokens = []
-        for token_id in token_ids:
-            token = self.id_to_token.get(token_id, self.UNK_TOKEN)
-            tokens.append(token)
-        return tokens
-        
-    def save_vocabulary(self, path: str):
-        """Save vocabulary to file."""
-        vocab_data = {
-            'token_to_id': self.token_to_id,
-            'id_to_token': self.id_to_token,
-            'token_freq': dict(self.token_freq),
-            'vocab_size': self.vocab_size,
-            'min_freq': self.min_freq
-        }
-        with open(path, 'w') as f:
-            json.dump(vocab_data, f, indent=2)
-            
-    def load_vocabulary(self, path: str):
-        """Load vocabulary from file."""
-        with open(path, 'r') as f:
-            vocab_data = json.load(f)
-            
-        self.token_to_id = vocab_data['token_to_id']
-        self.id_to_token = {int(k): v for k, v in vocab_data['id_to_token'].items()}
-        self.token_freq = Counter(vocab_data['token_freq'])
-        self.vocab_size = vocab_data['vocab_size']
-        self.min_freq = vocab_data['min_freq']
-
-
-class SequenceBuilder:
-    """Builder for log sequences using sliding window approach."""
+        logger.info(f"✅ Feature extraction complete: {features_df.shape[1]} features")
+        return features_df
     
-    def __init__(self, window_size: int = 20, stride: int = 1):
-        """
-        Initialize the sequence builder.
+    def _add_text_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add advanced text-based cybersecurity features"""
+        logger.info("📝 Adding text-based features...")
         
-        Args:
-            window_size: Number of log lines per sequence
-            stride: Step size for sliding window
-        """
-        self.window_size = window_size
-        self.stride = stride
+        # Convert raw_message to string and handle NaN
+        df['raw_message'] = df['raw_message'].fillna('').astype(str)
         
-    def build_sequences(self, 
-                       parsed_logs: List[Dict], 
-                       tokenizer: LogTokenizer) -> List[List[int]]:
-        """
-        Build sequences from parsed log data.
+        # Character-level features
+        df['char_diversity'] = df['raw_message'].apply(lambda x: len(set(x)) / max(len(x), 1))
+        df['uppercase_ratio'] = df['raw_message'].apply(lambda x: sum(1 for c in x if c.isupper()) / max(len(x), 1))
+        df['digit_ratio'] = df['raw_message'].apply(lambda x: sum(1 for c in x if c.isdigit()) / max(len(x), 1))
+        df['special_char_ratio'] = df['raw_message'].apply(lambda x: sum(1 for c in x if not c.isalnum()) / max(len(x), 1))
         
-        Args:
-            parsed_logs: List of parsed log dictionaries
-            tokenizer: Tokenizer for converting messages to tokens
+        # Cybersecurity-specific patterns
+        df['has_suspicious_keywords'] = df['raw_message'].str.lower().str.contains(
+            r'exploit|malware|backdoor|trojan|virus|worm|rootkit|keylogger|botnet|phishing', 
+            regex=True, na=False
+        ).astype(int)
+        
+        df['has_network_indicators'] = df['raw_message'].str.contains(
+            r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|port|tcp|udp|http|ftp|ssh|ssl', 
+            regex=True, na=False
+        ).astype(int)
+        
+        df['has_file_operations'] = df['raw_message'].str.lower().str.contains(
+            r'file|directory|folder|download|upload|execute|run|start|stop', 
+            regex=True, na=False
+        ).astype(int)
+        
+        df['has_security_events'] = df['raw_message'].str.lower().str.contains(
+            r'alert|warning|critical|emergency|panic|attack|intrusion|breach', 
+            regex=True, na=False
+        ).astype(int)
+        
+        # Command injection patterns
+        df['has_command_injection'] = df['raw_message'].str.contains(
+            r';|\||&|`|\$\(|\${|<|>|\.\./|/etc/|/bin/|cmd\.exe|powershell', 
+            regex=True, na=False
+        ).astype(int)
+        
+        return df
+    
+    def _add_statistical_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add statistical features based on existing data"""
+        logger.info("📊 Adding statistical features...")
+        
+        # Message length statistics
+        df['msg_length_log'] = np.log1p(df['message_length'])
+        df['msg_length_zscore'] = (df['message_length'] - df['message_length'].mean()) / df['message_length'].std()
+        
+        # Entropy-based features
+        df['entropy_normalized'] = df['entropy'] / 8.0  # Normalize to [0,1]
+        df['entropy_categorical'] = pd.cut(df['entropy'], bins=5, labels=False)
+        
+        # Attack score transformations
+        df['attack_score_squared'] = df['attack_score'] ** 2
+        df['attack_score_log'] = np.log1p(df['attack_score'])
+        
+        # Risk scoring
+        df['risk_score'] = (df['attack_score'] * 0.4 + 
+                           df['severity_score'] * 0.3 + 
+                           df['entropy_normalized'] * 0.3)
+        
+        return df
+    
+    def _add_behavioral_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add behavioral anomaly detection features"""
+        logger.info("🎭 Adding behavioral features...")
+        
+        # Frequency-based features by source
+        source_counts = df['source'].value_counts()
+        df['source_frequency'] = df['source'].map(source_counts)
+        df['source_rarity'] = 1.0 / df['source_frequency']
+        
+        # Log type patterns
+        logtype_counts = df['log_type'].value_counts()
+        df['logtype_frequency'] = df['log_type'].map(logtype_counts)
+        df['logtype_rarity'] = 1.0 / df['logtype_frequency']
+        
+        # Composite anomaly indicators
+        df['anomaly_indicator'] = (
+            df['has_error'] * 2 + 
+            df['has_suspicious_keywords'] * 3 + 
+            df['has_command_injection'] * 4 + 
+            df['has_security_events'] * 2
+        )
+        
+        # Binary feature combinations
+        df['error_and_auth'] = df['has_error'] & df['has_auth']
+        df['ip_and_error'] = df['has_ip'] & df['has_error']
+        df['network_and_suspicious'] = df['has_network_indicators'] & df['has_suspicious_keywords']
+        
+        return df
+    
+    def _add_source_specific_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add features specific to each data source"""
+        logger.info("🎯 Adding source-specific features...")
+        
+        # One-hot encode sources
+        for source in df['source'].unique():
+            df[f'is_{source.lower()}'] = (df['source'] == source).astype(int)
+        
+        # One-hot encode log types
+        for log_type in df['log_type'].unique():
+            clean_name = log_type.replace(' ', '_').replace('-', '_')
+            df[f'is_{clean_name}'] = (df['log_type'] == log_type).astype(int)
+        
+        # Source-specific risk factors
+        df['kdd_network_risk'] = df['is_kdd'] * df['risk_score']
+        df['ait_system_risk'] = df['is_ait'] * df['anomaly_indicator']
+        df['loghub_auth_risk'] = df['is_loghub'] * df['has_auth'] * df['has_error']
+        
+        return df
+    
+    def _add_interaction_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add engineered interaction features"""
+        logger.info("🔗 Adding interaction features...")
+        
+        # Risk multipliers
+        df['risk_entropy_product'] = df['risk_score'] * df['entropy_normalized']
+        df['attack_length_ratio'] = df['attack_score'] * np.log1p(df['message_length'])
+        
+        # Complex indicators
+        df['high_risk_long_message'] = ((df['risk_score'] > 0.7) & 
+                                       (df['message_length'] > df['message_length'].quantile(0.8))).astype(int)
+        
+        df['suspicious_network_activity'] = ((df['has_network_indicators'] == 1) & 
+                                           (df['has_suspicious_keywords'] == 1) & 
+                                           (df['attack_score'] > 0.5)).astype(int)
+        
+        # Threat level classification
+        conditions = [
+            df['attack_score'] < 0.2,
+            (df['attack_score'] >= 0.2) & (df['attack_score'] < 0.5),
+            (df['attack_score'] >= 0.5) & (df['attack_score'] < 0.8),
+            df['attack_score'] >= 0.8
+        ]
+        threat_levels = [0, 1, 2, 3]  # Low, Medium, High, Critical
+        df['threat_level'] = np.select(conditions, threat_levels)
+        
+        return df
+    
+    def prepare_for_training(self, train_df: pd.DataFrame, val_df: pd.DataFrame, 
+                           test_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Prepare features for LSTM training with proper scaling and selection
+        """
+        logger.info("🎛️ Preparing features for LSTM training...")
+        
+        # Extract features for all splits
+        train_features = self.extract_features(train_df)
+        val_features = self.extract_features(val_df)
+        test_features = self.extract_features(test_df)
+        
+        # Select numerical features for model training
+        numeric_features = self._select_numeric_features(train_features)
+        
+        # Get feature matrices
+        X_train = train_features[numeric_features].values
+        X_val = val_features[numeric_features].values
+        X_test = test_features[numeric_features].values
+        
+        # Handle missing values
+        X_train = np.nan_to_num(X_train, nan=0.0, posinf=1.0, neginf=-1.0)
+        X_val = np.nan_to_num(X_val, nan=0.0, posinf=1.0, neginf=-1.0)
+        X_test = np.nan_to_num(X_test, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        # Feature selection based on training data
+        y_train = train_features['is_attack'].values
+        if not self.is_fitted:
+            self.feature_selector.fit(X_train, y_train)
+            selected_indices = self.feature_selector.get_support(indices=True)
+            self.feature_names = [numeric_features[i] for i in selected_indices]
+            self.is_fitted = True
+        
+        # Apply feature selection
+        X_train_selected = self.feature_selector.transform(X_train)
+        X_val_selected = self.feature_selector.transform(X_val)
+        X_test_selected = self.feature_selector.transform(X_test)
+        
+        # Scale features
+        X_train_scaled = self.scaler.fit_transform(X_train_selected)
+        X_val_scaled = self.scaler.transform(X_val_selected)
+        X_test_scaled = self.scaler.transform(X_test_selected)
+        
+        logger.info(f"✅ Feature preparation complete:")
+        logger.info(f"   📊 Selected features: {len(self.feature_names)}")
+        logger.info(f"   📈 Training shape: {X_train_scaled.shape}")
+        logger.info(f"   📊 Validation shape: {X_val_scaled.shape}")
+        logger.info(f"   🧪 Test shape: {X_test_scaled.shape}")
+        
+        return X_train_scaled, X_val_scaled, X_test_scaled
+    
+    def _select_numeric_features(self, df: pd.DataFrame) -> List[str]:
+        """Select numerical features suitable for LSTM training"""
+        # Exclude non-numeric and identifier columns
+        exclude_cols = ['raw_message', 'source', 'log_type', 'server']
+        numeric_cols = []
+        
+        for col in df.columns:
+            if col not in exclude_cols:
+                if df[col].dtype in ['int64', 'float64', 'bool']:
+                    numeric_cols.append(col)
+                elif df[col].dtype == 'object':
+                    # Try to convert to numeric
+                    try:
+                        pd.to_numeric(df[col])
+                        numeric_cols.append(col)
+                    except:
+                        pass
+        
+        return numeric_cols
+    
+    def create_sequences(self, X: np.ndarray, window_size: int = None) -> np.ndarray:
+        """
+        Create sequences for LSTM input from feature matrix
+        """
+        if window_size is None:
+            window_size = self.sequence_length
             
-        Returns:
-            List of tokenized sequences
-            
-        TODO: Phase 2 implementation
-        - Extract messages from parsed logs
-        - Create sliding windows of log messages
-        - Tokenize and encode each sequence
-        - Pad/truncate to fixed length
-        """
-        print(f"TODO: Build sequences from {len(parsed_logs)} logs")
-        print(f"TODO: Window size: {self.window_size}, Stride: {self.stride}")
+        if len(X) < window_size:
+            # If we have fewer samples than window_size, pad with zeros
+            padding = np.zeros((window_size - len(X), X.shape[1]))
+            X_padded = np.vstack([padding, X])
+            return X_padded.reshape(1, window_size, X.shape[1])
         
-        # Placeholder sequences
         sequences = []
-        for i in range(0, len(parsed_logs) - self.window_size + 1, self.stride):
-            # Mock sequence of token IDs
-            sequence = [1, 2, 3, 4, 5] * (self.window_size // 5)
-            sequence = sequence[:self.window_size]  # Truncate
-            sequences.append(sequence)
-            
-        return sequences
+        for i in range(len(X) - window_size + 1):
+            sequences.append(X[i:i + window_size])
         
-    def pad_sequence(self, sequence: List[int], pad_token_id: int = 0) -> List[int]:
-        """
-        Pad or truncate sequence to fixed length.
+        return np.array(sequences)
+    
+    def get_feature_importance(self) -> pd.DataFrame:
+        """Get feature importance scores"""
+        if not self.is_fitted:
+            raise ValueError("Feature extractor must be fitted first")
         
-        Args:
-            sequence: Input sequence of token IDs
-            pad_token_id: Token ID for padding
-            
-        Returns:
-            Padded/truncated sequence
-        """
-        if len(sequence) >= self.window_size:
-            return sequence[:self.window_size]
-        else:
-            padding = [pad_token_id] * (self.window_size - len(sequence))
-            return sequence + padding
+        scores = self.feature_selector.scores_[self.feature_selector.get_support()]
+        importance_df = pd.DataFrame({
+            'feature': self.feature_names,
+            'importance': scores
+        }).sort_values('importance', ascending=False)
+        
+        return importance_df
+    
+    def save_feature_config(self, filepath: str):
+        """Save feature extraction configuration"""
+        import pickle
+        config = {
+            'scaler': self.scaler,
+            'feature_selector': self.feature_selector,
+            'feature_names': self.feature_names,
+            'sequence_length': self.sequence_length,
+            'selected_features': self.selected_features,
+            'is_fitted': self.is_fitted
+        }
+        
+        with open(filepath, 'wb') as f:
+            pickle.dump(config, f)
+        
+        logger.info(f"💾 Feature configuration saved to {filepath}")
+    
+    def load_feature_config(self, filepath: str):
+        """Load feature extraction configuration"""
+        import pickle
+        
+        with open(filepath, 'rb') as f:
+            config = pickle.load(f)
+        
+        self.scaler = config['scaler']
+        self.feature_selector = config['feature_selector']
+        self.feature_names = config['feature_names']
+        self.sequence_length = config['sequence_length']
+        self.selected_features = config['selected_features']
+        self.is_fitted = config['is_fitted']
+        
+        logger.info(f"📂 Feature configuration loaded from {filepath}")
 
+def main():
+    """Test the feature extractor"""
+    # Load test data
+    data_path = Path("../../data/processed")
+    train_df = pd.read_csv(data_path / "unified_train.csv")
+    val_df = pd.read_csv(data_path / "unified_validation.csv")
+    test_df = pd.read_csv(data_path / "unified_test.csv")
+    
+    print(f"📊 Loaded data: {len(train_df)} train, {len(val_df)} val, {len(test_df)} test")
+    
+    # Initialize feature extractor
+    extractor = CybersecurityFeatureExtractor(sequence_length=50, selected_features=30)
+    
+    # Prepare features
+    X_train, X_val, X_test = extractor.prepare_for_training(train_df, val_df, test_df)
+    
+    # Show feature importance
+    importance_df = extractor.get_feature_importance()
+    print("\n🏆 Top 10 Most Important Features:")
+    print(importance_df.head(10))
+    
+    # Create sequences for LSTM
+    print(f"\n🔄 Creating sequences for LSTM...")
+    sequences_train = extractor.create_sequences(X_train)
+    sequences_val = extractor.create_sequences(X_val)
+    sequences_test = extractor.create_sequences(X_test)
+    
+    print(f"✅ Sequence shapes:")
+    print(f"   Train: {sequences_train.shape}")
+    print(f"   Validation: {sequences_val.shape}")
+    print(f"   Test: {sequences_test.shape}")
+    
+    return extractor, (sequences_train, sequences_val, sequences_test)
 
-def extract_features(log_data: List[Dict], 
-                    tokenizer: Optional[LogTokenizer] = None,
-                    sequence_builder: Optional[SequenceBuilder] = None) -> Tuple[List[List[int]], LogTokenizer]:
-    """
-    Complete feature extraction pipeline.
-    
-    Args:
-        log_data: List of parsed log dictionaries
-        tokenizer: Pre-trained tokenizer (optional)
-        sequence_builder: Sequence builder (optional)
-        
-    Returns:
-        Tuple of (sequences, tokenizer)
-        
-    TODO: Phase 2 implementation
-    - Extract messages from log data
-    - Build/load tokenizer vocabulary
-    - Create sequences using sliding window
-    - Return processed sequences and tokenizer
-    """
-    print(f"TODO: Extract features from {len(log_data)} log entries")
-    
-    # Initialize components if not provided
-    if tokenizer is None:
-        tokenizer = LogTokenizer()
-        
-    if sequence_builder is None:
-        sequence_builder = SequenceBuilder()
-        
-    # Extract messages for vocabulary building
-    messages = [log['message'] for log in log_data if 'message' in log]
-    
-    # Build vocabulary if tokenizer is new
-    if not tokenizer.token_to_id:
-        tokenizer.build_vocabulary(messages)
-        
-    # Build sequences
-    sequences = sequence_builder.build_sequences(log_data, tokenizer)
-    
-    return sequences, tokenizer
-
-
-# Utility functions for data processing
-def create_train_test_split(sequences: List[List[int]], 
-                          labels: List[int], 
-                          test_size: float = 0.2) -> Tuple[List, List, List, List]:
-    """
-    Split sequences into train/test sets.
-    
-    TODO: Phase 2 implementation with stratified split
-    """
-    print(f"TODO: Split {len(sequences)} sequences with test_size={test_size}")
-    
-    # Mock split for now
-    split_idx = int(len(sequences) * (1 - test_size))
-    
-    X_train = sequences[:split_idx]
-    X_test = sequences[split_idx:]
-    y_train = labels[:split_idx] if labels else []
-    y_test = labels[split_idx:] if labels else []
-    
-    return X_train, X_test, y_train, y_test 
+if __name__ == "__main__":
+    extractor, sequences = main() 
