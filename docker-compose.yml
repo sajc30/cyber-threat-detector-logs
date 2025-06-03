@@ -1,0 +1,225 @@
+services:
+  # Zookeeper for Kafka coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: ctd-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - ctd-network
+
+  # Apache Kafka for log streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: ctd-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - "9092:9092"
+    networks:
+      - ctd-network
+
+  # PostgreSQL for metadata and alerts
+  postgres:
+    image: postgres:15-alpine
+    container_name: ctd-postgres
+    environment:
+      POSTGRES_DB: threat_detector
+      POSTGRES_USER: ctd_user
+      POSTGRES_PASSWORD: ctd_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - ctd-network
+
+  # Elasticsearch for log storage and search
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    container_name: ctd-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - cluster.name=threat-detector-cluster
+      - node.name=ctd-es-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - ctd-network
+
+  # Kibana for Elasticsearch visualization (optional)
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.0
+    container_name: ctd-kibana
+    depends_on:
+      - elasticsearch
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: ""
+      ELASTICSEARCH_PASSWORD: ""
+    ports:
+      - "5601:5601"
+    networks:
+      - ctd-network
+
+  # Flask API backend (to be built in Phase 3)
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ctd-backend
+    depends_on:
+      - postgres
+      - elasticsearch
+      - kafka
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://ctd_user:ctd_password@postgres:5432/threat_detector
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - ./artifacts:/app/artifacts
+    networks:
+      - ctd-network
+    # Uncomment when backend is ready
+    # command: ["flask", "run", "--host=0.0.0.0"]
+
+  # Kafka Consumer service (to be built in Phase 1)
+  kafka-consumer:
+    build:
+      context: .
+      dockerfile: backend/kafka_consumer/Dockerfile
+    container_name: ctd-kafka-consumer
+    depends_on:
+      - kafka
+      - backend
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - API_ENDPOINT=http://backend:5000/api/ingest
+    volumes:
+      - ./backend:/app
+    networks:
+      - ctd-network
+    # Uncomment when consumer is ready
+    # command: ["python", "consumer.py"]
+
+  # React frontend (to be built in Phase 4)
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: ctd-frontend
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/threat-detector-dashboard:/app
+    networks:
+      - ctd-network
+    # Uncomment when frontend is ready
+    # command: ["npm", "start"]
+
+  # Kafka producer for testing (Phase 1)
+  kafka-producer:
+    build:
+      context: .
+      dockerfile: backend/kafka_producer/Dockerfile
+    container_name: ctd-kafka-producer
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=system-logs
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+    networks:
+      - ctd-network
+    # Run manually for testing
+    profiles: ["testing"]
+
+  # Prometheus for metrics (Phase 8)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: ctd-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - ctd-network
+    profiles: ["monitoring"]
+
+  # Grafana for visualization (Phase 8)
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: ctd-grafana
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - ctd-network
+    profiles: ["monitoring"]
+
+volumes:
+  postgres_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  ctd-network:
+    driver: bridge
+
+# Development overrides
+# To use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# This allows for development-specific configurations without modifying main file 
