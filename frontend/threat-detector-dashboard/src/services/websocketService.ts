@@ -58,6 +58,7 @@ export interface WebSocketCallbacks {
   onThreatAcknowledged?: (data: any) => void;
   onUserMessage?: (data: any) => void;
   onError?: (error: string) => void;
+  onMonitoringStateChange?: (isActive: boolean) => void;
 }
 
 class WebSocketService {
@@ -74,6 +75,19 @@ class WebSocketService {
   }
 
   /**
+   * Get the appropriate WebSocket URL based on environment
+   */
+  private getWebSocketUrl(): string {
+    // In browser environment, always use localhost for external access
+    if (typeof window !== 'undefined') {
+      return process.env.REACT_APP_HOST_WS_URL || 'http://localhost:5001';
+    } else {
+      // In SSR/build environment, use container URL if available
+      return process.env.REACT_APP_WS_URL || 'http://localhost:5001';
+    }
+  }
+
+  /**
    * Initialize WebSocket connection to the Flask-SocketIO backend
    */
   connect(username?: string): Promise<void> {
@@ -81,11 +95,12 @@ class WebSocketService {
       try {
         if (username) this.username = username;
 
-        console.log('🔌 Connecting to WebSocket server...');
+        const wsUrl = this.getWebSocketUrl();
+        console.log('🔌 Connecting to WebSocket server at:', wsUrl);
         this.updateConnectionStatus({ status: 'connecting', message: 'Establishing connection...' });
 
         // Initialize socket connection
-        this.socket = io('http://localhost:5001', {
+        this.socket = io(wsUrl, {
           transports: ['websocket', 'polling'],
           timeout: 10000,
           auth: {
@@ -170,8 +185,9 @@ class WebSocketService {
 
     console.log('📊 Connecting to monitoring namespace...');
     
+    const wsUrl = this.getWebSocketUrl();
     // Connect to monitoring namespace
-    const monitoringSocket = io('http://localhost:5001/monitoring', {
+    const monitoringSocket = io(`${wsUrl}/monitoring`, {
       auth: { username: this.username }
     });
 
@@ -214,6 +230,25 @@ class WebSocketService {
     // User management handlers
     monitoringSocket.on('active_users_update', (data: any) => {
       this.callbacks.onActiveUsersUpdate?.(data.users, data.count);
+    });
+
+    // Monitoring state handlers
+    monitoringSocket.on('monitoring_started', (data: any) => {
+      console.log('✅ Monitoring started via WebSocket:', data);
+      this.callbacks.onMonitoringStateChange?.(true);
+      toast.success('🚀 Live monitoring started!');
+    });
+
+    monitoringSocket.on('monitoring_stopped', (data: any) => {
+      console.log('🛑 Monitoring stopped via WebSocket:', data);
+      this.callbacks.onMonitoringStateChange?.(false);
+      toast.success('🛑 Live monitoring stopped');
+    });
+
+    monitoringSocket.on('monitoring_status', (data: any) => {
+      console.log('📊 Monitoring status update:', data);
+      const isActive = data.status === 'started';
+      this.callbacks.onMonitoringStateChange?.(isActive);
     });
 
     monitoringSocket.on('welcome', (data: any) => {

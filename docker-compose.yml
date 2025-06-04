@@ -143,7 +143,7 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - PYTHONPATH=/app
     ports:
-      - "5000:5000"
+      - "5002:5000"
       - "5001:5001"
     volumes:
       - backend_logs:/app/logs
@@ -169,8 +169,10 @@ services:
     depends_on:
       - backend
     environment:
-      - REACT_APP_API_URL=http://localhost:5001/api
-      - REACT_APP_WS_URL=ws://localhost:5001
+      - REACT_APP_API_URL=http://backend:5001/api
+      - REACT_APP_WS_URL=ws://backend:5001
+      - REACT_APP_HOST_API_URL=http://localhost:5001/api
+      - REACT_APP_HOST_WS_URL=ws://localhost:5001
     ports:
       - "3000:3000"
     networks:

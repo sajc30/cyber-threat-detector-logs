@@ -67,6 +67,7 @@ class RealTimeService:
         self.threat_history: deque = deque(maxlen=1000)  # Keep last 1000 threats
         self.metrics_history: deque = deque(maxlen=100)   # Keep last 100 metric points
         self.rooms_users: Dict[str, set] = defaultdict(set)
+        self.monitoring_active = True  # Enable monitoring by default
         
         # Performance tracking
         self.stats = {

@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 # Flask and related imports
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from flask_socketio import SocketIO
 import eventlet
@@ -40,14 +40,46 @@ app.config.from_object(Config)
 
 # Configure CORS for WebSocket support
 CORS(app, resources={
-    r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]},
-    r"/socket.io/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}
+    r"/api/*": {"origins": [
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000", 
+        "http://frontend:3000",
+        "http://ctd-frontend:3000",
+        "http://192.168.65.1:3000",
+        "file://", 
+        "*"
+    ]},
+    r"/socket.io/*": {"origins": [
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000", 
+        "http://frontend:3000",
+        "http://ctd-frontend:3000",
+        "http://192.168.65.1:3000",
+        "file://", 
+        "*"
+    ]},
+    r"/*": {"origins": [
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000", 
+        "http://frontend:3000",
+        "http://ctd-frontend:3000",
+        "http://192.168.65.1:3000",
+        "file://", 
+        "*"
+    ]}
 })
 
 # Initialize SocketIO with CORS support
 socketio = SocketIO(
     app,
-    cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    cors_allowed_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "http://frontend:3000",
+        "http://ctd-frontend:3000",
+        "http://192.168.65.1:3000",
+        "*"
+    ],
     async_mode='eventlet',
     logger=True,
     engineio_logger=True,
@@ -307,6 +339,432 @@ def system_metrics():
             'error': f'Failed to get system metrics: {str(e)}'
         }), 500
 
+@app.route('/test')
+def serve_test_page():
+    """Serve the streaming test page"""
+    try:
+        # Try to read the test file from the project root
+        import os
+        test_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'test-streaming.html')
+        
+        if os.path.exists(test_file_path):
+            with open(test_file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return content, 200, {'Content-Type': 'text/html'}
+        else:
+            # Fallback: serve inline HTML
+            return '''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>CyberGuard AI - Stream Test</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+                    .container { max-width: 1200px; margin: 0 auto; }
+                    .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+                    .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                    .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                    .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+                    .log-entry { padding: 8px; margin: 5px 0; background: white; border-left: 4px solid #007bff; }
+                    .threat { border-left-color: #dc3545; background: #fff5f5; }
+                    button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+                    .btn-primary { background: #007bff; color: white; }
+                    .btn-success { background: #28a745; color: white; }
+                    .btn-danger { background: #dc3545; color: white; }
+                    #logs { max-height: 400px; overflow-y: auto; }
+                    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 20px 0; }
+                    .metric-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🛡️ CyberGuard AI - Real-Time Stream Test</h1>
+                    
+                    <div class="status info">
+                        <strong>Status:</strong> <span id="connection-status">Initializing...</span>
+                    </div>
+
+                    <div>
+                        <button class="btn-primary" onclick="testBackendHealth()">Test Backend Health</button>
+                        <button class="btn-success" onclick="startMonitoring()">Start Monitoring</button>
+                        <button class="btn-danger" onclick="stopMonitoring()">Stop Monitoring</button>
+                        <button class="btn-primary" onclick="connectStream()">Connect Stream</button>
+                        <button class="btn-danger" onclick="disconnectStream()">Disconnect Stream</button>
+                        <button onclick="clearLogs()">Clear Logs</button>
+                    </div>
+
+                    <div class="metrics">
+                        <div class="metric-card">
+                            <h3>Stream Events</h3>
+                            <div id="stream-count">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Threats Detected</h3>
+                            <div id="threat-count">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Connection Status</h3>
+                            <div id="stream-status">Disconnected</div>
+                        </div>
+                        <div class="metric-card">
+                            <h3>Last Update</h3>
+                            <div id="last-update">Never</div>
+                        </div>
+                    </div>
+
+                    <h3>Live Log Stream</h3>
+                    <div id="logs"></div>
+                </div>
+
+                <script>
+                    let eventSource = null;
+                    let streamCount = 0;
+                    let threatCount = 0;
+
+                    function log(message, type = 'info', isTime = true) {
+                        const logs = document.getElementById('logs');
+                        const div = document.createElement('div');
+                        div.className = `log-entry ${type === 'threat' ? 'threat' : ''}`;
+                        const timestamp = isTime ? `[${new Date().toLocaleTimeString()}] ` : '';
+                        div.innerHTML = `${timestamp}${message}`;
+                        logs.insertBefore(div, logs.firstChild);
+                    }
+
+                    function updateStatus(message, type = 'info') {
+                        const status = document.getElementById('connection-status');
+                        status.textContent = message;
+                        status.parentElement.className = `status ${type}`;
+                    }
+
+                    function updateMetrics() {
+                        document.getElementById('stream-count').textContent = streamCount;
+                        document.getElementById('threat-count').textContent = threatCount;
+                        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+                    }
+
+                    function clearLogs() {
+                        document.getElementById('logs').innerHTML = '';
+                        streamCount = 0;
+                        threatCount = 0;
+                        updateMetrics();
+                    }
+
+                    async function testBackendHealth() {
+                        try {
+                            log('🔍 Testing backend health...', 'info');
+                            const response = await fetch('/api/health');
+                            
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            
+                            const data = await response.json();
+                            log(`✅ Backend healthy! Services: ${JSON.stringify(data.services)}`, 'info');
+                            updateStatus('Backend Connected', 'success');
+                            
+                            // Test real-time service
+                            const rtStatus = await fetch('/api/realtime/status');
+                            const rtData = await rtStatus.json();
+                            log(`📊 Real-time service: ${rtData.status} (${rtData.active_users} users)`, 'info');
+                            
+                        } catch (error) {
+                            log(`❌ Backend test failed: ${error.message}`, 'info');
+                            updateStatus('Backend Error', 'error');
+                        }
+                    }
+
+                    async function startMonitoring() {
+                        try {
+                            log('🚀 Starting monitoring...', 'info');
+                            const response = await fetch('/api/monitoring/start', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            
+                            const data = await response.json();
+                            log(`✅ Monitoring started: ${data.message}`, 'info');
+                            
+                        } catch (error) {
+                            log(`❌ Start monitoring failed: ${error.message}`, 'info');
+                        }
+                    }
+
+                    async function stopMonitoring() {
+                        try {
+                            log('🛑 Stopping monitoring...', 'info');
+                            const response = await fetch('/api/monitoring/stop', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                            
+                            const data = await response.json();
+                            log(`✅ Monitoring stopped: ${data.message}`, 'info');
+                            
+                        } catch (error) {
+                            log(`❌ Stop monitoring failed: ${error.message}`, 'info');
+                        }
+                    }
+
+                    function connectStream() {
+                        if (eventSource) {
+                            log('⚠️ Stream already connected', 'info');
+                            return;
+                        }
+
+                        try {
+                            log('📡 Connecting to stream...', 'info');
+                            eventSource = new EventSource('/api/stream/logs');
+
+                            eventSource.onopen = function() {
+                                log('✅ Stream connected successfully!', 'info');
+                                updateStatus('Stream Connected', 'success');
+                                document.getElementById('stream-status').textContent = 'Connected';
+                            };
+
+                            eventSource.onmessage = function(event) {
+                                try {
+                                    const data = JSON.parse(event.data);
+                                    streamCount++;
+                                    
+                                    if (data.event_type === 'live_log') {
+                                        const logEntry = data.log;
+                                        const analysis = data.analysis;
+                                        
+                                        let message = `📝 [${logEntry.source_ip}] ${logEntry.content}`;
+                                        let type = 'info';
+                                        
+                                        if (analysis.threat_detected) {
+                                            threatCount++;
+                                            type = 'threat';
+                                            message += ` 🚨 THREAT: ${analysis.threat_level} (${analysis.threat_score})`;
+                                        }
+                                        
+                                        log(message, type);
+                                    } else if (data.event_type === 'error') {
+                                        log(`❌ Stream error: ${data.error}`, 'info');
+                                    }
+                                    
+                                    updateMetrics();
+                                    
+                                } catch (error) {
+                                    log(`❌ Failed to parse stream data: ${error.message}`, 'info');
+                                }
+                            };
+
+                            eventSource.onerror = function(error) {
+                                log(`❌ Stream error occurred`, 'info');
+                                updateStatus('Stream Error', 'error');
+                                document.getElementById('stream-status').textContent = 'Error';
+                                
+                                if (eventSource.readyState === EventSource.CLOSED) {
+                                    log('🔌 Stream connection closed', 'info');
+                                    eventSource = null;
+                                    document.getElementById('stream-status').textContent = 'Disconnected';
+                                }
+                            };
+
+                        } catch (error) {
+                            log(`❌ Failed to connect to stream: ${error.message}`, 'info');
+                            updateStatus('Stream Failed', 'error');
+                        }
+                    }
+
+                    function disconnectStream() {
+                        if (eventSource) {
+                            eventSource.close();
+                            eventSource = null;
+                            log('🔌 Stream disconnected', 'info');
+                            updateStatus('Stream Disconnected', 'info');
+                            document.getElementById('stream-status').textContent = 'Disconnected';
+                        } else {
+                            log('⚠️ No stream to disconnect', 'info');
+                        }
+                    }
+
+                    // Auto-connect on page load
+                    window.addEventListener('load', function() {
+                        log('🌐 Page loaded - Testing system...', 'info');
+                        testBackendHealth();
+                    });
+
+                    // Cleanup on page unload
+                    window.addEventListener('beforeunload', function() {
+                        if (eventSource) {
+                            eventSource.close();
+                        }
+                    });
+                </script>
+            </body>
+            </html>
+            ''', 200, {'Content-Type': 'text/html'}
+            
+    except Exception as e:
+        logger.error(f"Error serving test page: {e}")
+        return jsonify({'error': f'Failed to serve test page: {str(e)}'}), 500
+
+@app.route('/api/monitoring/start', methods=['POST'])
+def start_monitoring():
+    """Start live monitoring"""
+    try:
+        rt_service = get_realtime_service()
+        if not rt_service:
+            return jsonify({
+                'status': 'error',
+                'message': 'Real-time service not available'
+            }), 503
+        
+        # Enable monitoring in the real-time service
+        rt_service.monitoring_active = True
+        
+        # Emit WebSocket event to all connected clients
+        socketio.emit('monitoring_status', {
+            'status': 'started',
+            'timestamp': datetime.now().isoformat(),
+            'message': 'Live log monitoring started'
+        }, room='monitoring_room', namespace='/monitoring')
+        
+        # Also emit to general namespace for backward compatibility
+        socketio.emit('monitoring_started', {
+            'status': 'success',
+            'timestamp': datetime.now().isoformat()
+        }, namespace='/monitoring')
+        
+        return jsonify({
+            'status': 'started',
+            'timestamp': datetime.now().isoformat(),
+            'message': 'Live log monitoring started'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Start monitoring error: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/monitoring/stop', methods=['POST'])
+def stop_monitoring():
+    """Stop live monitoring"""
+    try:
+        rt_service = get_realtime_service()
+        if not rt_service:
+            return jsonify({
+                'status': 'error',
+                'message': 'Real-time service not available'
+            }), 503
+        
+        # Disable monitoring in the real-time service
+        rt_service.monitoring_active = False
+        
+        # Emit WebSocket event to all connected clients
+        socketio.emit('monitoring_status', {
+            'status': 'stopped',
+            'timestamp': datetime.now().isoformat(),
+            'message': 'Live log monitoring stopped'
+        }, room='monitoring_room', namespace='/monitoring')
+        
+        # Also emit to general namespace for backward compatibility
+        socketio.emit('monitoring_stopped', {
+            'status': 'success',
+            'timestamp': datetime.now().isoformat()
+        }, namespace='/monitoring')
+        
+        return jsonify({
+            'status': 'stopped',
+            'timestamp': datetime.now().isoformat(),
+            'message': 'Live log monitoring stopped'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Stop monitoring error: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/stream/logs')
+def stream_logs():
+    """Server-Sent Events endpoint for live log streaming"""
+    def event_stream():
+        import time
+        import random
+        import json
+        
+        # Sample log entries for demonstration
+        sample_logs = [
+            'GET /index.html HTTP/1.1 200 192.168.1.10',
+            'POST /login HTTP/1.1 200 192.168.1.15',
+            'GET /admin HTTP/1.1 404 192.168.1.100',
+            'SELECT * FROM users WHERE id=1; DROP TABLE users;--',
+            'Failed login attempt for user admin from 192.168.1.50',
+            'Normal web request GET /api/data HTTP/1.1 200',
+            'POST /upload HTTP/1.1 200 application/json',
+            'Multiple failed SSH attempts from 10.0.0.45',
+            'Malicious file upload attempt: exploit.php',
+            'User successfully logged in: john.doe',
+            '<script>alert("XSS attack")</script>',
+            'SELECT password FROM admin_users WHERE username="admin"',
+            '../../../etc/passwd directory traversal attempt',
+            'Normal user activity: file download completed',
+        ]
+        
+        counter = 0
+        while True:
+            try:
+                # Generate a random log entry
+                log_entry = random.choice(sample_logs)
+                timestamp = datetime.now().isoformat()
+                source_ip = f"192.168.1.{random.randint(10, 200)}"
+                
+                # Create enhanced log entry
+                enhanced_log = {
+                    'id': f"log_{int(time.time() * 1000)}_{random.randint(1000, 9999)}",
+                    'timestamp': timestamp,
+                    'content': log_entry,
+                    'source_ip': source_ip,
+                    'method': random.choice(['GET', 'POST', 'PUT', 'DELETE']),
+                    'status_code': random.choice([200, 404, 401, 403, 500]),
+                }
+                
+                # Analyze for threats using the AI detector
+                analysis_result = {'threat_detected': False, 'threat_level': 'none'}
+                if threat_detector:
+                    analysis_result = threat_detector.analyze_log(log_entry)
+                
+                # Combine log and analysis
+                stream_data = {
+                    'event_type': 'live_log',
+                    'log': enhanced_log,
+                    'analysis': analysis_result,
+                    'counter': counter
+                }
+                
+                yield f"data: {json.dumps(stream_data)}\n\n"
+                
+                counter += 1
+                time.sleep(2)  # Send update every 2 seconds
+                
+            except Exception as e:
+                logger.error(f"Stream error: {e}")
+                error_data = {'error': str(e), 'event_type': 'error'}
+                yield f"data: {json.dumps(error_data)}\n\n"
+                break
+    
+    return Response(
+        event_stream(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Cache-Control'
+        }
+    )
+
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
@@ -369,7 +827,7 @@ if __name__ == '__main__':
         # Start the application with WebSocket support
         socketio.run(
             app,
-            host='localhost',
+            host='0.0.0.0',
             port=5001,
             debug=False,  # Disable debug in production
             use_reloader=False,  # Disable reloader with eventlet

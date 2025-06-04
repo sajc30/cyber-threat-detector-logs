@@ -1,0 +1,382 @@
+global:
+  # Global SMTP configuration
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@cyberguard.ai'
+  smtp_auth_username: 'alerts@cyberguard.ai'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_auth_secret: '${SMTP_AUTH_SECRET}'
+  smtp_require_tls: true
+  
+  # Global Slack configuration
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  
+  # Global PagerDuty configuration
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routing configuration
+route:
+  group_by: ['alertname', 'severity', 'component']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: 'default'
+  
+  routes:
+  # Critical alerts - immediate notification via multiple channels
+  - match:
+      severity: critical
+    receiver: 'critical-alerts'
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 5m
+    routes:
+    # Backend/Frontend down - page immediately
+    - match_re:
+        alertname: 'CyberGuard(Backend|Frontend)Down'
+      receiver: 'immediate-page'
+      group_wait: 5s
+      repeat_interval: 2m
+    
+    # Database issues - escalate quickly
+    - match:
+        component: database
+      receiver: 'database-team'
+      group_wait: 10s
+      repeat_interval: 3m
+    
+    # Infrastructure issues - platform team
+    - match:
+        component: infrastructure
+      receiver: 'platform-team'
+      group_wait: 15s
+      repeat_interval: 5m
+
+  # Warning alerts - team notifications with delayed escalation
+  - match:
+      severity: warning
+    receiver: 'warning-alerts'
+    group_wait: 1m
+    group_interval: 10m
+    repeat_interval: 1h
+    routes:
+    # Security warnings - security team
+    - match:
+        component: security
+      receiver: 'security-team'
+      group_wait: 30s
+      repeat_interval: 30m
+    
+    # ML/Model warnings - data science team
+    - match:
+        component: ml-engine
+      receiver: 'data-science-team'
+      group_wait: 2m
+      repeat_interval: 2h
+
+  # Info alerts - team notifications during business hours
+  - match:
+      severity: info
+    receiver: 'info-alerts'
+    group_wait: 5m
+    group_interval: 30m
+    repeat_interval: 24h
+    active_time_intervals:
+    - business-hours
+
+  # Business alerts - product team during business hours
+  - match:
+      component: business
+    receiver: 'product-team'
+    group_wait: 10m
+    repeat_interval: 24h
+    active_time_intervals:
+    - business-hours
+
+# Time intervals for alert scheduling
+time_intervals:
+- name: business-hours
+  time_intervals:
+  - times:
+    - start_time: '09:00'
+      end_time: '17:00'
+    weekdays: ['monday:friday']
+    location: 'America/Los_Angeles'
+
+- name: out-of-hours
+  time_intervals:
+  - times:
+    - start_time: '17:01'
+      end_time: '08:59'
+    weekdays: ['monday:friday']
+  - times:
+    - start_time: '00:00'
+      end_time: '23:59'
+    weekdays: ['saturday', 'sunday']
+    location: 'America/Los_Angeles'
+
+# Inhibition rules to suppress redundant alerts
+inhibit_rules:
+# If a service is down, suppress high response time alerts for that service
+- source_match:
+    alertname: 'CyberGuardBackendDown'
+  target_match:
+    component: 'backend'
+  target_match_re:
+    alertname: 'High.*'
+  equal: ['instance']
+
+- source_match:
+    alertname: 'CyberGuardFrontendDown'
+  target_match:
+    component: 'frontend'
+  target_match_re:
+    alertname: 'High.*'
+  equal: ['instance']
+
+# If disk space is critical, suppress warnings
+- source_match:
+    alertname: 'DiskSpaceCritical'
+  target_match:
+    alertname: 'DiskSpaceWarning'
+  equal: ['instance', 'device']
+
+# If memory is critical, suppress moderate warnings
+- source_match:
+    alertname: 'HighMemoryUsage'
+  target_match:
+    alertname: 'ModerateMemoryUsage'
+  equal: ['instance']
+
+# Receivers configuration
+receivers:
+# Default receiver for ungrouped alerts
+- name: 'default'
+  email_configs:
+  - to: 'devops@cyberguard.ai'
+    subject: 'CyberGuard AI Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ range .Alerts }}
+      Alert: {{ .Annotations.summary }}
+      Description: {{ .Annotations.description }}
+      Severity: {{ .Labels.severity }}
+      Component: {{ .Labels.component }}
+      {{ if .Annotations.runbook_url }}Runbook: {{ .Annotations.runbook_url }}{{ end }}
+      {{ end }}
+
+# Critical alerts - multiple channels with immediate escalation
+- name: 'critical-alerts'
+  email_configs:
+  - to: 'oncall@cyberguard.ai,devops@cyberguard.ai'
+    subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+    headers:
+      Priority: 'urgent'
+    body: |
+      {{ template "critical.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#alerts-critical'
+    color: 'danger'
+    title: '🚨 CRITICAL ALERT'
+    text: |
+      {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Severity:* {{ .Labels.severity }}
+      *Component:* {{ .Labels.component }}
+      {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+      {{ end }}
+    actions:
+    - type: button
+      text: 'View Dashboard'
+      url: 'https://grafana.cyberguard.ai/d/overview'
+    - type: button
+      text: 'Acknowledge'
+      url: 'https://alertmanager.cyberguard.ai'
+
+  pagerduty_configs:
+  - routing_key: '${PAGERDUTY_INTEGRATION_KEY}'
+    description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+    severity: 'critical'
+    component: '{{ .GroupLabels.component }}'
+    group: 'cyberguard-ai'
+    custom_details:
+      firing_alerts: '{{ .Alerts.Firing | len }}'
+      environment: 'production'
+
+# Immediate page for service down alerts
+- name: 'immediate-page'
+  pagerduty_configs:
+  - routing_key: '${PAGERDUTY_HIGH_URGENCY_KEY}'
+    description: 'SERVICE DOWN: {{ .GroupLabels.alertname }}'
+    severity: 'critical'
+    component: '{{ .GroupLabels.component }}'
+    group: 'cyberguard-ai'
+    custom_details:
+      alert_count: '{{ .Alerts.Firing | len }}'
+      environment: 'production'
+      escalation_policy: 'immediate'
+
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#incident-response'
+    color: 'danger'
+    title: '🚨🚨 SERVICE DOWN - IMMEDIATE ATTENTION REQUIRED'
+    text: |
+      {{ range .Alerts }}
+      *CRITICAL SERVICE OUTAGE*
+      *Service:* {{ .Labels.component }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+      {{ end }}
+
+# Database team notifications
+- name: 'database-team'
+  email_configs:
+  - to: 'dba@cyberguard.ai,platform@cyberguard.ai'
+    subject: '🗄️ Database Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "database.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#team-database'
+    color: 'warning'
+    title: '🗄️ Database Alert'
+    text: |
+      {{ range .Alerts }}
+      *Database Issue Detected*
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+      {{ end }}
+
+# Platform team notifications
+- name: 'platform-team'
+  email_configs:
+  - to: 'platform@cyberguard.ai'
+    subject: '🏗️ Infrastructure Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "platform.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#team-platform'
+    color: 'warning'
+    title: '🏗️ Infrastructure Alert'
+    text: |
+      {{ range .Alerts }}
+      *Infrastructure Issue*
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Component:* {{ .Labels.component }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+      {{ end }}
+
+# Security team notifications
+- name: 'security-team'
+  email_configs:
+  - to: 'security@cyberguard.ai'
+    subject: '🛡️ Security Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "security.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#team-security'
+    color: 'warning'
+    title: '🛡️ Security Alert'
+    text: |
+      {{ range .Alerts }}
+      *Security Event Detected*
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Severity:* {{ .Labels.severity }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+      {{ end }}
+
+# Data science team notifications
+- name: 'data-science-team'
+  email_configs:
+  - to: 'datascience@cyberguard.ai'
+    subject: '🤖 ML/Model Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "ml.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#team-data-science'
+    color: 'warning'
+    title: '🤖 ML/Model Alert'
+    text: |
+      {{ range .Alerts }}
+      *ML Model Issue*
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+      {{ end }}
+
+# Product team notifications
+- name: 'product-team'
+  email_configs:
+  - to: 'product@cyberguard.ai'
+    subject: '📊 Business Metrics Alert: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "business.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#team-product'
+    color: 'good'
+    title: '📊 Business Metrics Alert'
+    text: |
+      {{ range .Alerts }}
+      *Business Metrics Notice*
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      {{ end }}
+
+# Warning alerts
+- name: 'warning-alerts'
+  email_configs:
+  - to: 'alerts@cyberguard.ai'
+    subject: '⚠️ Warning: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "warning.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#alerts-warning'
+    color: 'warning'
+    title: '⚠️ Warning Alert'
+    text: |
+      {{ range .Alerts }}
+      *Warning:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Component:* {{ .Labels.component }}
+      {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
+      {{ end }}
+
+# Info alerts
+- name: 'info-alerts'
+  email_configs:
+  - to: 'monitoring@cyberguard.ai'
+    subject: 'ℹ️ Info: {{ .GroupLabels.alertname }}'
+    body: |
+      {{ template "info.email" . }}
+  
+  slack_configs:
+  - api_url: '${SLACK_WEBHOOK_URL}'
+    channel: '#alerts-info'
+    color: 'good'
+    title: 'ℹ️ Information Alert'
+    text: |
+      {{ range .Alerts }}
+      *Info:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      {{ end }} 

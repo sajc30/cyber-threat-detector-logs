@@ -37,7 +37,7 @@ ENV FLASK_ENV=development
 COPY backend/ .
 USER appuser
 EXPOSE 5000 5001
-CMD ["python", "realtime_server.py"]
+CMD ["python", "app.py"]
 
 # Production stage
 FROM base as production
@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 5000 5001
 
 # Default command
-CMD ["python", "realtime_server.py"] 
+CMD ["python", "app_simple.py"] 

@@ -63,12 +63,26 @@ class RealTimeService {
   private reconnectDelay = 2000;
 
   /**
+   * Get the appropriate API URL based on environment
+   */
+  private getApiUrl(): string {
+    // In browser environment, always use localhost for external access
+    if (typeof window !== 'undefined') {
+      return process.env.REACT_APP_HOST_API_URL || 'http://localhost:5001/api';
+    } else {
+      // In SSR/build environment, use container URL if available
+      return process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+    }
+  }
+
+  /**
    * Test connectivity to backend
    */
   async testConnectivity(): Promise<boolean> {
     try {
       console.log('🔍 Testing backend connectivity...');
-      const response = await fetch('http://localhost:5001/api/health', {
+      const apiUrl = this.getApiUrl();
+      const response = await fetch(`${apiUrl.replace('/api', '')}/api/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -126,7 +140,8 @@ class RealTimeService {
    */
   async startMonitoring(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:5001/api/monitoring/start', {
+      const apiUrl = this.getApiUrl();
+      const response = await fetch(`${apiUrl.replace('/api', '')}/api/monitoring/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,6 +150,9 @@ class RealTimeService {
 
       const result = await response.json();
       console.log('📊 Monitoring started:', result);
+      
+      // The monitoring state will be updated via WebSocket events
+      // so we don't need to manually update state here
       return response.ok;
     } catch (error) {
       console.error('❌ Failed to start monitoring:', error);
@@ -148,7 +166,8 @@ class RealTimeService {
    */
   async stopMonitoring(): Promise<boolean> {
     try {
-      const response = await fetch('http://localhost:5001/api/monitoring/stop', {
+      const apiUrl = this.getApiUrl();
+      const response = await fetch(`${apiUrl.replace('/api', '')}/api/monitoring/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,6 +176,9 @@ class RealTimeService {
 
       const result = await response.json();
       console.log('🛑 Monitoring stopped:', result);
+      
+      // The monitoring state will be updated via WebSocket events
+      // so we don't need to manually update state here
       return response.ok;
     } catch (error) {
       console.error('❌ Failed to stop monitoring:', error);
@@ -177,7 +199,11 @@ class RealTimeService {
         this.eventSource.close();
       }
       
-      this.eventSource = new EventSource('http://localhost:5001/api/stream/logs');
+      const apiUrl = this.getApiUrl();
+      const streamUrl = `${apiUrl.replace('/api', '')}/api/stream/logs`;
+      console.log('📡 Stream URL:', streamUrl);
+      
+      this.eventSource = new EventSource(streamUrl);
 
       this.eventSource.onopen = () => {
         console.log('✅ Connected to real-time stream');

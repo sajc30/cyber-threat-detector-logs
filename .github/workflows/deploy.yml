@@ -39,6 +39,8 @@ jobs:
       run: |
         cd frontend/threat-detector-dashboard
         npm run build
+      env:
+        CI: false
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
