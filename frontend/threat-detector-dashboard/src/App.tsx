@@ -276,7 +276,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/monitoring" element={<RealTimeMonitoring />} />
+              <Route path="/real-time-monitoring" element={<RealTimeMonitoring />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/active-threats" element={<ActiveThreats />} />
