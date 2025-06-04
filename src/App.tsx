@@ -22,6 +22,22 @@ import { getDemoStatus } from './services/api';
 
 const theme = createTheme();
 
+// Get the correct basename for routing based on environment
+const getBasename = () => {
+  // In development, no basename needed
+  if (process.env.NODE_ENV === 'development') {
+    return '';
+  }
+  
+  // For GitHub Pages deployment
+  if (window.location.hostname === 'sajc30.github.io') {
+    return '/cyber-threat-detector-logs';
+  }
+  
+  // Default fallback
+  return '';
+};
+
 const App: React.FC = () => {
   const [demoStatus, setDemoStatus] = useState<boolean>(false);
 
@@ -37,7 +53,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <Router basename={getBasename()}>
         <Toaster />
         <Navbar />
         <Sidebar />

@@ -48,13 +48,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       id: 'dashboard',
       text: 'Dashboard',
       icon: <DashboardIcon />,
-      path: '/dashboard',
+      path: '/',
     },
     {
       id: 'monitoring',
       text: 'Real-Time Monitoring',
       icon: <MonitoringIcon />,
-      path: '/monitoring',
+      path: '/real-time-monitoring',
       badge: {
         text: 'LIVE',
         color: 'success',
