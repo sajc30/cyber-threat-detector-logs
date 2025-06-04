@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stream Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .error { background: #ffebee; color: #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; }
+        .data { background: #fff3e0; color: #ef6c00; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Stream Connection Debug Test</h1>
+    <button onclick="testConnection()">Test Stream Connection</button>
+    <button onclick="testBackend()">Test Backend Health</button>
+    <button onclick="startMonitoring()">Start Monitoring</button>
+    <button onclick="clearLogs()">Clear Logs</button>
+    
+    <div id="logs"></div>
+
+    <script>
+        let eventSource = null;
+        
+        function log(message, type = 'log') {
+            const logs = document.getElementById('logs');
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong> - ${message}`;
+            logs.insertBefore(div, logs.firstChild);
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        async function testBackend() {
+            try {
+                log('🔍 Testing backend health...', 'log');
+                const response = await fetch('http://localhost:5001/api/health');
+                const data = await response.json();
+                log(`✅ Backend health: ${JSON.stringify(data)}`, 'success');
+                log(`Response headers: ${JSON.stringify([...response.headers.entries()])}`, 'log');
+            } catch (error) {
+                log(`❌ Backend health failed: ${error.message}`, 'error');
+                console.error('Backend health error:', error);
+            }
+        }
+        
+        async function startMonitoring() {
+            try {
+                log('🚀 Starting monitoring...', 'log');
+                const response = await fetch('http://localhost:5001/api/monitoring/start', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                log(`✅ Monitoring started: ${JSON.stringify(data)}`, 'success');
+                log(`Response headers: ${JSON.stringify([...response.headers.entries()])}`, 'log');
+            } catch (error) {
+                log(`❌ Start monitoring failed: ${error.message}`, 'error');
+                console.error('Start monitoring error:', error);
+            }
+        }
+        
+        function testConnection() {
+            if (eventSource) {
+                eventSource.close();
+                log('🔌 Closed existing connection', 'log');
+            }
+            
+            log('📡 Connecting to stream...', 'log');
+            eventSource = new EventSource('http://localhost:5001/api/stream/logs');
+            
+            eventSource.onopen = function(event) {
+                log('✅ Stream connection opened!', 'success');
+                log(`Connection details: readyState=${eventSource.readyState}, url=${eventSource.url}`, 'log');
+            };
+            
+            eventSource.onmessage = function(event) {
+                log(`📥 Data received: ${event.data.substring(0, 200)}...`, 'data');
+                try {
+                    const parsed = JSON.parse(event.data);
+                    if (parsed.event_type === 'live_log') {
+                        log(`🔍 Live Log: ${parsed.log.content} | Threat: ${parsed.analysis.threat_detected}`, 'success');
+                    } else if (parsed.event_type === 'threat_alert') {
+                        log(`🚨 Threat Alert: ${parsed.threat_type} (${parsed.severity})`, 'error');
+                    }
+                } catch (e) {
+                    log(`⚠️ Failed to parse: ${e.message}`, 'error');
+                }
+            };
+            
+            eventSource.onerror = function(event) {
+                log(`❌ Stream error occurred!`, 'error');
+                log(`Error details: readyState=${eventSource.readyState}, event=${JSON.stringify(event)}`, 'error');
+                
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    log('🔍 Connection was closed', 'error');
+                } else if (eventSource.readyState === EventSource.CONNECTING) {
+                    log('🔍 Still trying to connect...', 'log');
+                }
+            };
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            log('🌐 Page loaded, ready for testing!', 'log');
+            testBackend();
+        };
+    </script>
+</body>
+</html> 

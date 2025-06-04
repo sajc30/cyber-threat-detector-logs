@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # Zookeeper for Kafka coordination
   zookeeper:
@@ -11,6 +13,12 @@ services:
       - "2181:2181"
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   # Apache Kafka for log streaming
   kafka:
@@ -18,7 +26,8 @@ services:
     hostname: kafka
     container_name: ctd-kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
@@ -31,6 +40,12 @@ services:
       - "9092:9092"
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   # PostgreSQL for metadata and alerts
   postgres:
@@ -40,6 +55,7 @@ services:
       POSTGRES_DB: threat_detector
       POSTGRES_USER: ctd_user
       POSTGRES_PASSWORD: ctd_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     ports:
       - "5432:5432"
     volumes:
@@ -47,6 +63,12 @@ services:
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ctd_user -d threat_detector"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   # Elasticsearch for log storage and search
   elasticsearch:
@@ -71,13 +93,20 @@ services:
       - elasticsearch_data:/usr/share/elasticsearch/data
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   # Kibana for Elasticsearch visualization (optional)
   kibana:
     image: docker.elastic.co/kibana/kibana:8.10.0
     container_name: ctd-kibana
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
       ELASTICSEARCH_USERNAME: ""
@@ -86,88 +115,117 @@ services:
       - "5601:5601"
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
-  # Flask API backend (to be built in Phase 3)
+  # Backend API - Production-ready with multi-stage build
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: production
     container_name: ctd-backend
     depends_on:
-      - postgres
-      - elasticsearch
-      - kafka
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
-      - FLASK_ENV=development
+      - FLASK_ENV=production
       - DATABASE_URL=postgresql://ctd_user:ctd_password@postgres:5432/threat_detector
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - PYTHONPATH=/app
     ports:
       - "5000:5000"
+      - "5001:5001"
     volumes:
-      - ./backend:/app
-      - ./artifacts:/app/artifacts
+      - backend_logs:/app/logs
+      - backend_artifacts:/app/artifacts
     networks:
       - ctd-network
-    # Uncomment when backend is ready
-    # command: ["flask", "run", "--host=0.0.0.0"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    security_opt:
+      - no-new-privileges:true
 
-  # Kafka Consumer service (to be built in Phase 1)
-  kafka-consumer:
-    build:
-      context: .
-      dockerfile: backend/kafka_consumer/Dockerfile
-    container_name: ctd-kafka-consumer
-    depends_on:
-      - kafka
-      - backend
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - API_ENDPOINT=http://backend:5000/api/ingest
-    volumes:
-      - ./backend:/app
-    networks:
-      - ctd-network
-    # Uncomment when consumer is ready
-    # command: ["python", "consumer.py"]
-
-  # React frontend (to be built in Phase 4)
+  # React Frontend - Production build with Nginx
   frontend:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      target: production
     container_name: ctd-frontend
     depends_on:
       - backend
     environment:
-      - REACT_APP_API_URL=http://localhost:5000/api
+      - REACT_APP_API_URL=http://localhost:5001/api
+      - REACT_APP_WS_URL=ws://localhost:5001
     ports:
       - "3000:3000"
-    volumes:
-      - ./frontend/threat-detector-dashboard:/app
     networks:
       - ctd-network
-    # Uncomment when frontend is ready
-    # command: ["npm", "start"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+    security_opt:
+      - no-new-privileges:true
 
-  # Kafka producer for testing (Phase 1)
-  kafka-producer:
-    build:
-      context: .
-      dockerfile: backend/kafka_producer/Dockerfile
-    container_name: ctd-kafka-producer
-    depends_on:
-      - kafka
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - KAFKA_TOPIC=system-logs
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: ctd-redis
+    command: redis-server --appendonly yes --requirepass redis_password
+    ports:
+      - "6379:6379"
     volumes:
-      - ./data:/data
-      - ./backend:/app
+      - redis_data:/data
     networks:
       - ctd-network
-    # Run manually for testing
-    profiles: ["testing"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Nginx reverse proxy and load balancer
+  nginx:
+    image: nginx:alpine
+    container_name: ctd-nginx
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - ctd-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    profiles: ["production"]
 
   # Prometheus for metrics (Phase 8)
   prometheus:
@@ -179,13 +237,20 @@ services:
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
     profiles: ["monitoring"]
 
   # Grafana for visualization (Phase 8)
@@ -196,30 +261,47 @@ services:
       - prometheus
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
       - ctd-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
     profiles: ["monitoring"]
 
+# Named volumes for data persistence
 volumes:
   postgres_data:
     driver: local
   elasticsearch_data:
     driver: local
+  redis_data:
+    driver: local
   prometheus_data:
     driver: local
   grafana_data:
     driver: local
+  backend_logs:
+    driver: local
+  backend_artifacts:
+    driver: local
+  nginx_logs:
+    driver: local
 
+# Custom bridge network for service communication
 networks:
   ctd-network:
     driver: bridge
-
-# Development overrides
-# To use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
-# This allows for development-specific configurations without modifying main file 
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

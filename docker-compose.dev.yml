@@ -1,0 +1,95 @@
+version: '3.8'
+
+# Development overrides
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Backend - Development mode with hot reload
+  backend:
+    build:
+      target: development
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend:/app
+      - ./artifacts:/app/artifacts
+      - ./models:/app/models
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+      - "5678:5678"  # Debugger port
+    command: ["python", "realtime_server.py"]
+
+  # Frontend - Development mode with hot reload
+  frontend:
+    build:
+      target: development
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001/api
+      - REACT_APP_WS_URL=ws://localhost:5001
+      - GENERATE_SOURCEMAP=true
+      - FAST_REFRESH=true
+    volumes:
+      - ./frontend/threat-detector-dashboard:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    command: ["npm", "start"]
+
+  # Kafka Consumer for development
+  kafka-consumer:
+    build:
+      context: .
+      dockerfile: backend/kafka_consumer/Dockerfile
+    container_name: ctd-kafka-consumer-dev
+    depends_on:
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - API_ENDPOINT=http://backend:5001/api/ingest
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend:/app
+    networks:
+      - ctd-network
+    restart: unless-stopped
+
+  # Kafka Producer for testing
+  kafka-producer:
+    build:
+      context: .
+      dockerfile: backend/kafka_producer/Dockerfile
+    container_name: ctd-kafka-producer-dev
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=system-logs
+      - PYTHONPATH=/app
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+    networks:
+      - ctd-network
+    profiles: ["testing"]
+
+  # Development database with exposed ports
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=threat_detector_dev
+      - POSTGRES_USER=dev_user
+      - POSTGRES_PASSWORD=dev_password
+
+  # Development Redis
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes 

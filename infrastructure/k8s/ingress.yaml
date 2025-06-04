@@ -1,0 +1,238 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cyberguard-ingress
+  namespace: cyberguard-ai
+  labels:
+    app.kubernetes.io/name: cyberguard-ai
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: cybersecurity-platform
+  annotations:
+    # AWS Load Balancer Controller annotations
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/load-balancer-name: cyberguard-ai-alb
+    
+    # SSL/TLS configuration
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:ACCOUNT_ID:certificate/CERT_ID
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-2017-01
+    
+    # Health checks
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    
+    # Traffic routing
+    alb.ingress.kubernetes.io/load-balancer-attributes: |
+      routing.http2.enabled=true,
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=cyberguard-prod-logs,
+      access_logs.s3.prefix=alb-access-logs,
+      idle_timeout.timeout_seconds=300
+    
+    # Security
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:ACCOUNT_ID:global/webacl/cyberguard-waf/WEB_ACL_ID
+    alb.ingress.kubernetes.io/security-groups: sg-xxxxxxxxx
+    
+    # Performance
+    alb.ingress.kubernetes.io/target-group-attributes: |
+      stickiness.enabled=false,
+      deregistration_delay.timeout_seconds=30,
+      stickiness.type=lb_cookie,
+      stickiness.lb_cookie.duration_seconds=86400
+    
+    # Subnets
+    alb.ingress.kubernetes.io/subnets: subnet-xxxxxxxxx,subnet-yyyyyyyyy,subnet-zzzzzzzzz
+    
+    # Tags
+    alb.ingress.kubernetes.io/tags: |
+      Environment=production,
+      Project=CyberGuard-AI,
+      ManagedBy=Kubernetes
+spec:
+  tls:
+  - hosts:
+    - cyberguard.example.com
+    - www.cyberguard.example.com
+    - api.cyberguard.example.com
+    secretName: cyberguard-tls-secret
+  rules:
+  - host: cyberguard.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: cyberguard-backend
+            port:
+              number: 5001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cyberguard-frontend
+            port:
+              number: 80
+  - host: www.cyberguard.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: cyberguard-backend
+            port:
+              number: 5001
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cyberguard-frontend
+            port:
+              number: 80
+  - host: api.cyberguard.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: cyberguard-backend
+            port:
+              number: 5001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cyberguard-ingress-service
+  namespace: cyberguard-ai
+  labels:
+    app.kubernetes.io/name: cyberguard-ai
+    app.kubernetes.io/component: ingress-service
+    app.kubernetes.io/part-of: cybersecurity-platform
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "300"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-west-2:ACCOUNT_ID:certificate/CERT_ID
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    external-dns.alpha.kubernetes.io/hostname: cyberguard.example.com,www.cyberguard.example.com,api.cyberguard.example.com
+spec:
+  type: LoadBalancer
+  loadBalancerClass: service.k8s.aws/nlb
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: cyberguard-frontend
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cyberguard-network-policy
+  namespace: cyberguard-ai
+  labels:
+    app.kubernetes.io/name: cyberguard-ai
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/part-of: cybersecurity-platform
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from ALB to frontend
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: aws-load-balancer-controller
+    ports:
+    - protocol: TCP
+      port: 80
+  # Allow frontend to backend communication
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-frontend
+    to:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-backend
+    ports:
+    - protocol: TCP
+      port: 5001
+  # Allow Prometheus scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 9113
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow HTTPS outbound (for external APIs)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow backend to database
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow backend to Redis
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-backend
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow backend to OpenSearch
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-backend
+    ports:
+    - protocol: TCP
+      port: 9200
+    - protocol: TCP
+      port: 443
+  # Allow backend to Kafka
+  - from:
+    - podSelector:
+        matchLabels:
+          app: cyberguard-backend
+    ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 9094 
