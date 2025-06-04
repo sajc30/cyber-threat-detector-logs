@@ -76,6 +76,22 @@ const darkTheme = createTheme({
   }
 });
 
+// Get the correct basename for routing based on environment
+const getBasename = () => {
+  // In development, no basename needed
+  if (process.env.NODE_ENV === 'development') {
+    return '';
+  }
+  
+  // For GitHub Pages deployment
+  if (window.location.hostname === 'sajc30.github.io') {
+    return '/cyber-threat-detector-logs';
+  }
+  
+  // Default fallback
+  return '';
+};
+
 // Connection status indicator component
 const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
   const demoStatus = getDemoStatus();
@@ -200,7 +216,7 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Router>
+      <Router basename={getBasename()}>
         {/* Real-time notification toaster */}
         <Toaster
           position="top-right"
