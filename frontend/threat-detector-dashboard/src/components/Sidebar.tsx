@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       id: 'threats',
       text: 'Active Threats',
       icon: <Warning />,
-      path: '/threats',
+      path: '/active-threats',
       badge: {
         text: '3',
         color: 'error',
@@ -89,13 +89,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       id: 'incidents',
       text: 'Security Incidents',
       icon: <BugReport />,
-      path: '/incidents',
+      path: '/security-incidents',
     },
     {
       id: 'forensics',
       text: 'Digital Forensics',
       icon: <Visibility />,
-      path: '/forensics',
+      path: '/digital-forensics',
     },
   ];
 

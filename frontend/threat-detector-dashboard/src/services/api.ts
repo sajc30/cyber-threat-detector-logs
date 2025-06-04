@@ -1,222 +1,278 @@
 import axios from 'axios';
 
-// Base API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+// Environment configuration
+const isProduction = process.env.NODE_ENV === 'production';
+const isDemoMode = window.location.hostname.includes('github.io') || isProduction;
+
+// API Configuration
+const getApiUrl = () => {
+  // Check if running in browser vs SSR
+  if (typeof window === 'undefined') {
+    return 'http://backend:5001';
+  }
+  
+  // Browser environment - try environment variables first, then fallback
+  return process.env.REACT_APP_API_URL || 
+         process.env.REACT_APP_CONTAINER_API_URL || 
+         'http://localhost:5001';
+};
+
+const API_BASE_URL = isDemoMode ? '' : getApiUrl();
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
+  baseURL: API_BASE_URL.replace('/api', ''),
+  timeout: isDemoMode ? 1000 : 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor for debugging
+// Mock data for demo mode
+const mockData = {
+  threats: [
+    {
+      id: 'THR-001',
+      title: 'Suspicious PowerShell Activity',
+      description: 'Encoded PowerShell command detected with potential malicious payload',
+      severity: 'High',
+      status: 'Active',
+      source: '192.168.1.45',
+      timestamp: '2024-01-20 14:32:15',
+      details: 'Base64 encoded PowerShell execution detected'
+    },
+    {
+      id: 'THR-002', 
+      title: 'Unusual Network Traffic',
+      description: 'Large data transfer to unknown external IP detected',
+      severity: 'Medium',
+      status: 'Investigating',
+      source: '10.0.0.23',
+      timestamp: '2024-01-20 14:15:08',
+      details: 'Data exfiltration attempt detected'
+    },
+    {
+      id: 'THR-003',
+      title: 'Failed Login Attempts',
+      description: 'Multiple failed SSH login attempts from external IP',
+      severity: 'Low',
+      status: 'Mitigated', 
+      source: '203.45.67.89',
+      timestamp: '2024-01-20 13:45:22',
+      details: 'Brute force attack blocked by firewall'
+    }
+  ],
+  metrics: {
+    totalThreats: 247,
+    activeThreats: 12,
+    resolvedToday: 8,
+    systemHealth: 98.5,
+    avgResponseTime: 1.2,
+    threatLevel: 'Medium'
+  },
+  logs: [
+    {
+      id: 1,
+      timestamp: '2024-01-20 14:35:00',
+      level: 'WARNING',
+      source: 'Firewall',
+      message: 'Blocked connection attempt from 203.45.67.89:4444',
+      category: 'Security'
+    },
+    {
+      id: 2,
+      timestamp: '2024-01-20 14:34:15',
+      level: 'INFO',
+      source: 'IDS',
+      message: 'Signature update completed successfully',
+      category: 'System'
+    },
+    {
+      id: 3,
+      timestamp: '2024-01-20 14:33:42',
+      level: 'ERROR',
+      source: 'Auth',
+      message: 'Failed login attempt for user admin from 192.168.1.100',
+      category: 'Security'
+    }
+  ]
+};
+
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
-    console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Intercepting API request:', config.url);
+    } else {
+      console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor for error handling
+// Response interceptor  
 api.interceptors.response.use(
   (response) => {
-    console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+    if (!isDemoMode) {
+      console.log(`✅ API Response: ${response.status} ${response.config.url}`);
+    }
     return response;
   },
   (error) => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: API request failed, returning mock data');
+      return Promise.resolve({ data: getMockDataForEndpoint(error.config?.url || '') });
+    }
     console.error(`❌ API Error: ${error.response?.status || 'Network Error'} ${error.config?.url}`);
     return Promise.reject(error);
   }
 );
 
+// Helper function to get mock data based on endpoint
+function getMockDataForEndpoint(url: string) {
+  if (url.includes('/threats')) return mockData.threats;
+  if (url.includes('/metrics')) return mockData.metrics;
+  if (url.includes('/logs')) return mockData.logs;
+  if (url.includes('/health')) return { status: 'healthy', message: 'Demo mode active' };
+  if (url.includes('/monitoring/start')) return { success: true, message: 'Demo monitoring started' };
+  if (url.includes('/monitoring/stop')) return { success: true, message: 'Demo monitoring stopped' };
+  
+  return { success: true, message: 'Demo mode response' };
+}
+
 // Types for API responses
-export interface ThreatDetectionResult {
-  threat_detected: boolean;
-  threat_level: string;
-  threat_score: number;
-  confidence: number;
-  inference_time_ms: number;
-  features_extracted?: number;
-  log_entry?: string;
-  timestamp: string;
-  threat_types?: string[];
-  analysis_details?: string;
-  log_entry_length?: number;
-}
-
-export interface BatchDetectionResult {
-  total_logs: number;
-  threats_detected: number;
-  normal_logs: number;
-  threat_distribution: Record<string, number>;
-  average_inference_time_ms: number;
-  results: ThreatDetectionResult[];
-}
-
-export interface SystemHealth {
+export interface ThreatResponse {
+  id: string;
+  title: string;
+  description: string;
+  severity: string;
   status: string;
-  model_loaded: boolean;
-  model_path: string;
-  feature_extractor_ready: boolean;
-  uptime_seconds: number;
-  total_predictions: number;
-  average_inference_time_ms: number;
+  source: string;
   timestamp: string;
+  details?: string;
 }
 
-export interface SystemStats {
-  total_detections: number;
-  threats_blocked: number;
-  detection_accuracy: number;
-  uptime_hours: number;
-  model_version: string;
-  last_model_update: string;
-  performance_metrics: {
-    average_response_time_ms: number;
-    requests_per_minute: number;
-    error_rate: number;
-  };
+export interface MetricsResponse {
+  totalThreats: number;
+  activeThreats: number;
+  resolvedToday: number;
+  systemHealth: number;
+  avgResponseTime: number;
+  threatLevel: string;
 }
 
-export interface SystemMetrics {
-  cpu_usage: number;
-  memory_usage: number;
-  disk_usage: number;
-  network_activity: {
-    bytes_sent: number;
-    bytes_received: number;
-  };
-  active_connections: number;
-  queue_size: number;
-  timestamp: string;
-}
-
-// API Service Class
-class ApiService {
-  // Threat Detection APIs
-  async detectThreat(logEntry: string): Promise<ThreatDetectionResult> {
-    const response = await api.post('/api/analyze', {
-      log_entry: logEntry,
-    });
-    
-    // Transform backend response to match frontend interface
-    const backendData = response.data;
-    return {
-      threat_detected: backendData.threat_detected,
-      threat_level: backendData.threat_level,
-      threat_score: backendData.threat_score,
-      confidence: backendData.confidence,
-      inference_time_ms: backendData.inference_time_ms || 2.5,
-      features_extracted: 25, // Based on our backend detection patterns
-      log_entry: logEntry,
-      timestamp: backendData.timestamp || new Date().toISOString(),
-      threat_types: backendData.threat_types || [],
-      analysis_details: backendData.analysis_details,
-      log_entry_length: backendData.log_entry_length,
-    };
-  }
-
-  async detectThreatseBatch(logEntries: string[]): Promise<BatchDetectionResult> {
-    const response = await api.post('/api/detect/batch', {
-      log_entries: logEntries,
-    });
-    return response.data;
-  }
-
-  // System Monitoring APIs
-  async getSystemHealth(): Promise<SystemHealth> {
-    const response = await api.get('/api/health');
-    return response.data;
-  }
-
-  async getSystemStats(): Promise<SystemStats> {
-    const response = await api.get('/api/stats');
-    return response.data;
-  }
-
-  async getSystemMetrics(): Promise<SystemMetrics> {
-    const response = await api.get('/api/metrics');
-    return response.data;
-  }
-
-  // Admin APIs
-  async reloadModel(): Promise<{ success: boolean; message: string }> {
-    const response = await api.post('/api/admin/reload_model');
-    return response.data;
-  }
-
-  // Test APIs
-  async runTestDetection(): Promise<any> {
-    const response = await api.get('/api/test');
-    return response.data;
-  }
-
-  // Generic API call for custom endpoints
-  async customCall(method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, data?: any): Promise<any> {
-    const response = await api.request({
-      method,
-      url: endpoint,
-      data,
-    });
-    return response.data;
-  }
-}
-
-// Export singleton instance
-export const apiService = new ApiService();
-
-// Export types and utilities
-export default apiService;
-
-// Helper function to check if backend is available
-export const checkBackendAvailability = async (): Promise<boolean> => {
-  try {
-    await apiService.getSystemHealth();
-    return true;
-  } catch (error) {
-    console.warn('Backend not available:', error);
-    return false;
-  }
-};
-
-// Mock data for development when backend is not available
-export const mockThreatDetectionResult: ThreatDetectionResult = {
-  threat_detected: true,
-  threat_level: 'high',
-  threat_score: 0.87,
-  confidence: 0.92,
-  inference_time_ms: 3.2,
-  features_extracted: 52,
-  log_entry: 'Suspicious SQL injection attempt detected',
-  timestamp: new Date().toISOString(),
-};
-
-export const mockSystemHealth: SystemHealth = {
-  status: 'operational',
-  model_loaded: true,
-  model_path: '/models/lstm_autoencoder.h5',
-  feature_extractor_ready: true,
-  uptime_seconds: 86400,
-  total_predictions: 1247,
-  average_inference_time_ms: 2.8,
-  timestamp: new Date().toISOString(),
-};
-
-export const mockSystemStats: SystemStats = {
-  total_detections: 1247,
-  threats_blocked: 23,
-  detection_accuracy: 0.997,
-  uptime_hours: 24,
-  model_version: '1.0.0',
-  last_model_update: '2024-01-15T10:30:00Z',
-  performance_metrics: {
-    average_response_time_ms: 2.8,
-    requests_per_minute: 145,
-    error_rate: 0.003,
+// API functions
+export const threatAPI = {
+  getAll: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Returning mock threats');
+      return { data: mockData.threats };
+    }
+    return api.get('/api/threats');
   },
-}; 
+  
+  getById: async (id: string) => {
+    if (isDemoMode) {
+      const threat = mockData.threats.find(t => t.id === id);
+      return { data: threat || mockData.threats[0] };
+    }
+    return api.get(`/api/threats/${id}`);
+  },
+  
+  updateStatus: async (id: string, status: string) => {
+    if (isDemoMode) {
+      console.log(`🎭 Demo Mode: Updated threat ${id} status to ${status}`);
+      return { data: { success: true, message: 'Status updated in demo mode' } };
+    }
+    return api.patch(`/api/threats/${id}`, { status });
+  }
+};
+
+export const metricsAPI = {
+  getDashboard: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Returning mock metrics');
+      return { data: mockData.metrics };
+    }
+    return api.get('/api/metrics/dashboard');
+  },
+  
+  getSystemHealth: async () => {
+    if (isDemoMode) {
+      return { data: { health: 98.5, status: 'excellent' } };
+    }
+    return api.get('/api/metrics/health');
+  }
+};
+
+export const logsAPI = {
+  getRecent: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Returning mock logs');
+      return { data: mockData.logs };
+    }
+    return api.get('/api/logs/recent');
+  },
+  
+  search: async (query: string) => {
+    if (isDemoMode) {
+      const filtered = mockData.logs.filter(log => 
+        log.message.toLowerCase().includes(query.toLowerCase())
+      );
+      return { data: filtered };
+    }
+    return api.get(`/api/logs/search?q=${encodeURIComponent(query)}`);
+  }
+};
+
+export const monitoringAPI = {
+  start: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Started monitoring simulation');
+      return { data: { success: true, message: 'Demo monitoring started' } };
+    }
+    return api.post('/api/monitoring/start');
+  },
+  
+  stop: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Stopped monitoring simulation');
+      return { data: { success: true, message: 'Demo monitoring stopped' } };
+    }
+    return api.post('/api/monitoring/stop');
+  },
+  
+  getStatus: async () => {
+    if (isDemoMode) {
+      return { data: { status: 'active', message: 'Demo monitoring active' } };
+    }
+    return api.get('/api/monitoring/status');
+  }
+};
+
+export const healthAPI = {
+  check: async () => {
+    if (isDemoMode) {
+      console.log('🎭 Demo Mode: Health check simulation');
+      return { 
+        data: { 
+          status: 'healthy', 
+          message: 'Demo mode - all systems operational',
+          uptime: '99.9%',
+          version: '1.0.0-demo'
+        } 
+      };
+    }
+    return api.get('/api/health');
+  }
+};
+
+// Demo mode indicator
+export const getDemoStatus = () => ({
+  isDemoMode,
+  isProduction,
+  apiBaseUrl: API_BASE_URL,
+  hostname: window.location.hostname
+});
+
+export default api; 

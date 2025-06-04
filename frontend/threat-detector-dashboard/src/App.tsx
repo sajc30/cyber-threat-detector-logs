@@ -12,9 +12,14 @@ import Dashboard from './pages/Dashboard';
 import RealTimeMonitoring from './pages/RealTimeMonitoring';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+// Security Center Pages
+import ActiveThreats from './pages/ActiveThreats';
+import SecurityIncidents from './pages/SecurityIncidents';
+import DigitalForensics from './pages/DigitalForensics';
 
 // Services
 import websocketService, { ConnectionStatus } from './services/websocketService';
+import { getDemoStatus } from './services/api';
 
 // Dark cybersecurity theme
 const darkTheme = createTheme({
@@ -73,7 +78,10 @@ const darkTheme = createTheme({
 
 // Connection status indicator component
 const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status }) => {
+  const demoStatus = getDemoStatus();
+  
   const getStatusColor = () => {
+    if (demoStatus.isDemoMode) return 'info';
     switch (status.status) {
       case 'connected': return 'success';
       case 'connecting': return 'warning';
@@ -84,6 +92,7 @@ const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status })
   };
 
   const getStatusIcon = () => {
+    if (demoStatus.isDemoMode) return '🎭';
     switch (status.status) {
       case 'connected': return '🟢';
       case 'connecting': return '🟡';
@@ -91,6 +100,18 @@ const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status })
       case 'error': return '🔴';
       default: return '⚪';
     }
+  };
+
+  const getStatusText = () => {
+    if (demoStatus.isDemoMode) return 'DEMO MODE';
+    return `API: ${status.status.toUpperCase()}`;
+  };
+
+  const getStatusMessage = () => {
+    if (demoStatus.isDemoMode) {
+      return 'Running with mock data for demonstration';
+    }
+    return status.message;
   };
 
   return (
@@ -106,7 +127,7 @@ const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status })
     }}>
       <Chip
         icon={<span>{getStatusIcon()}</span>}
-        label={`API: ${status.status.toUpperCase()}`}
+        label={getStatusText()}
         color={getStatusColor()}
         variant="filled"
         size="small"
@@ -114,10 +135,11 @@ const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status })
           fontFamily: 'monospace',
           fontWeight: 'bold',
           backdropFilter: 'blur(10px)',
-          backgroundColor: status.status === 'connected' ? '#00ff8820' : undefined
+          backgroundColor: demoStatus.isDemoMode ? '#2196f320' : 
+                          status.status === 'connected' ? '#00ff8820' : undefined
         }}
       />
-      {status.message && (
+      {getStatusMessage() && (
         <Typography 
           variant="caption" 
           sx={{ 
@@ -131,7 +153,7 @@ const ConnectionIndicator: React.FC<{ status: ConnectionStatus }> = ({ status })
             textAlign: 'right'
           }}
         >
-          {status.message}
+          {getStatusMessage()}
         </Typography>
       )}
     </Box>
@@ -149,58 +171,29 @@ function App() {
   };
 
   useEffect(() => {
+    const demoStatus = getDemoStatus();
     console.log('🚀 Initializing CyberGuard AI Dashboard...');
+    console.log('🎭 Demo Status:', demoStatus);
     
-    // Temporarily disabled WebSocket for basic functionality
-    // TODO: Re-enable when implementing WebSocket integration
-    /*
-    // Set up WebSocket callbacks
-    websocketService.setCallbacks({
-      onConnectionStatusChange: (status: ConnectionStatus) => {
-        console.log('📡 Connection status changed:', status);
-        setConnectionStatus(status);
-      },
-      onThreatAlert: (alert) => {
-        console.log('🚨 Threat alert in App:', alert);
-      },
-      onPriorityAlert: (alert) => {
-        console.log('🚨🚨 Priority alert in App:', alert);
-      },
-      onSystemMetricsUpdate: (metrics) => {
-        console.log('📊 System metrics updated:', metrics);
-      },
-      onActiveUsersUpdate: (users, count) => {
-        console.log('👥 Active users updated:', users, count);
-      },
-      onError: (error) => {
-        console.error('❌ WebSocket error in App:', error);
-      }
-    });
-
-    // Connect to WebSocket
-    const connectWebSocket = async () => {
-      try {
-        console.log('🔌 Connecting to real-time service...');
-        await websocketService.connect('CyberAdmin');
-        console.log('✅ Real-time connection established successfully');
-      } catch (error) {
-        console.error('❌ Failed to connect to real-time service:', error);
-      }
-    };
-
-    connectWebSocket();
-    */
-
-    // Set initial status as connected for API-only mode
-    setConnectionStatus({ 
-      status: 'connected', 
-      message: 'API Connected (WebSocket disabled)' 
-    });
+    if (demoStatus.isDemoMode) {
+      // Demo mode - set status accordingly
+      setConnectionStatus({ 
+        status: 'connected', 
+        message: 'Demo mode active - using mock data' 
+      });
+      console.log('🎭 Demo Mode: Application initialized with mock data');
+    } else {
+      // Regular mode - keep WebSocket disabled for now as discussed
+      setConnectionStatus({ 
+        status: 'connected', 
+        message: 'API Connected (WebSocket disabled)' 
+      });
+      console.log('⚙️ Regular Mode: Application initialized with API-only mode');
+    }
 
     // Cleanup on unmount
     return () => {
       console.log('🧹 App cleanup...');
-      // websocketService.disconnect(); // Disabled
     };
   }, []);
 
@@ -270,6 +263,9 @@ function App() {
               <Route path="/monitoring" element={<RealTimeMonitoring />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/active-threats" element={<ActiveThreats />} />
+              <Route path="/security-incidents" element={<SecurityIncidents />} />
+              <Route path="/digital-forensics" element={<DigitalForensics />} />
             </Routes>
           </Box>
         </Box>
