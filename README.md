@@ -1,13 +1,13 @@
 # 🛡️ CyberGuard AI - Advanced Threat Detection Platform
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?style=for-the-badge)](https://sajcheema.github.io/cyber-threat-detector-logs/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-blue?style=for-the-badge)](https://sajc30.github.io/cyber-threat-detector-logs/)
 [![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![Flask](https://img.shields.io/badge/Flask-Python-000000?style=for-the-badge&logo=flask)](https://flask.palletsprojects.com/)
 [![Material-UI](https://img.shields.io/badge/Material--UI-5.x-0081CB?style=for-the-badge&logo=material-ui)](https://mui.com/)
 
 ## 🚀 Live Demo
-**[View Live Demo →](https://sajcheema.github.io/cyber-threat-detector-logs/)**
+**[View Live Demo →](https://sajc30.github.io/cyber-threat-detector-logs/)**
 
 ---
 
@@ -84,7 +84,7 @@
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/sajcheema/cyber-threat-detector-logs.git
+git clone https://github.com/sajc30/cyber-threat-detector-logs.git
 cd cyber-threat-detector-logs
 ```
 
@@ -211,7 +211,7 @@ docker-compose -f docker-compose.prod.yml up -d
 - **Portfolio**: [Your Portfolio Website]
 - **LinkedIn**: [Your LinkedIn Profile]
 - **Email**: [your.email@domain.com]
-- **GitHub**: [@sajcheema](https://github.com/sajcheema)
+- **GitHub**: [@sajc30](https://github.com/sajc30)
 
 ---
 

@@ -2,7 +2,7 @@
   "name": "threat-detector-dashboard",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://sajcheema.github.io/cyber-threat-detector-logs",
+  "homepage": "https://sajc30.github.io/cyber-threat-detector-logs",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
