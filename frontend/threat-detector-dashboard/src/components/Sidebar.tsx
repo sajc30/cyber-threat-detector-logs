@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       id: 'monitoring',
       text: 'Real-Time Monitoring',
       icon: <MonitoringIcon />,
-      path: '/real-time-monitoring',
+      path: '/monitoring',
       badge: {
         text: 'LIVE',
         color: 'success',
