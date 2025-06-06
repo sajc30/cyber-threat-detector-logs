@@ -99,23 +99,6 @@ This project implements a **modern microservices architecture** with real-time s
 - **Custom hooks** for WebSocket and API integration
 - **Service layer pattern** for API abstraction
 
-**Key Technical Implementations:**
-```typescript
-// Real-time WebSocket service with reconnection logic
-class WebSocketService {
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  
-  connect(url: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(url);
-      this.setupEventHandlers(resolve, reject);
-    });
-  }
-}
-```
-
 **Component Architecture:**
 - **`pages/`** - Route-level components with lazy loading
 - **`components/`** - Reusable UI components with prop interfaces
@@ -175,21 +158,6 @@ services:
 - **Container resource limits** and scaling configuration
 
 ### **📊 Monitoring & Observability**
-
-**Health Monitoring:**
-```python
-@app.route('/api/health')
-def health_check():
-    return {
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'services': {
-            'database': check_db_connection(),
-            'elasticsearch': check_es_connection(),
-            'kafka': check_kafka_connection()
-        }
-    }
-```
 
 **System Metrics:**
 - **Real-time connection status** monitoring
