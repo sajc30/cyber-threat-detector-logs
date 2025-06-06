@@ -90,19 +90,6 @@ This project implements a **modern microservices architecture** with real-time s
 - **`websocket_handlers.py`** - Real-time communication handlers
 - **`kafka_producer/consumer/`** - Event streaming implementation
 
-**Advanced Features Implemented:**
-```python
-# Real-time threat analysis with custom scoring algorithm
-def analyze_log(self, log_entry: str) -> Dict[str, Any]:
-    features = self._extract_features(log_entry)
-    threat_level, threat_score, confidence = self._classify_threat(log_entry, features)
-    
-    # Multi-pattern threat detection
-    for pattern in self.suspicious_patterns:
-        if re.search(pattern, log_entry, re.IGNORECASE):
-            threats.append(self._classify_pattern(pattern))
-```
-
 ### **⚛️ Frontend Architecture**
 
 **React Application Structure:**
