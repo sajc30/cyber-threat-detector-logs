@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Tuple, Optional
 import logging
+import dill
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -428,7 +429,12 @@ class CybersecurityLSTMTrainer:
     
     def load_model(self, filepath: str):
         """Load a trained model"""
-        checkpoint = torch.load(filepath, map_location=self.device)
+        checkpoint = torch.load(
+            filepath,
+            map_location=self.device,
+            pickle_module=dill,  # Use dill for safer deserialization
+            weights_only=True  # Only load the weights, not arbitrary Python objects
+        )
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.best_val_loss = checkpoint['best_val_loss']

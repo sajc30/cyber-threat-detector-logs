@@ -827,7 +827,7 @@ if __name__ == '__main__':
         # Start the application with WebSocket support
         socketio.run(
             app,
-            host='0.0.0.0',
+            host=os.environ.get('FLASK_HOST', '127.0.0.1'),
             port=5001,
             debug=False,  # Disable debug in production
             use_reloader=False,  # Disable reloader with eventlet

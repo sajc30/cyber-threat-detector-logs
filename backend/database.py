@@ -226,11 +226,13 @@ def update_threat_status(threat_id: int, blocked: bool = None, investigated: boo
             if not updates:
                 return False
             
-            # Use parameterized query with placeholders
-            placeholders = ', '.join(['?' for _ in updates])
-            columns = ', '.join(updates.keys())
-            query = f"UPDATE threats SET {columns} = {placeholders} WHERE id = ?"
-            params.extend(updates.values())
+            # Create update pairs safely
+            update_pairs = []
+            for key, value in updates.items():
+                update_pairs.append(f"{key} = ?")
+                params.append(value)
+            
+            query = f"UPDATE threats SET {', '.join(update_pairs)} WHERE id = ?"
             params.append(threat_id)
             
             cursor = conn.execute(query, params)

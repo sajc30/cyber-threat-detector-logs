@@ -393,7 +393,7 @@ if __name__ == '__main__':
         
         # Start the application with standard Flask WSGI
         app.run(
-            host='0.0.0.0',
+            host=os.environ.get('FLASK_HOST', '127.0.0.1'),
             port=5001,
             debug=False,
             threaded=True,
