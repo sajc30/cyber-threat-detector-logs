@@ -214,22 +214,24 @@ def update_threat_status(threat_id: int, blocked: bool = None, investigated: boo
     """Update threat investigation/block status"""
     try:
         with get_db_connection() as conn:
-            updates = []
+            updates = {}
             params = []
             
             if blocked is not None:
-                updates.append('blocked = ?')
-                params.append(blocked)
+                updates['blocked'] = blocked
             
             if investigated is not None:
-                updates.append('investigated = ?')
-                params.append(investigated)
+                updates['investigated'] = investigated
             
             if not updates:
                 return False
             
+            # Use parameterized query with placeholders
+            placeholders = ', '.join(['?' for _ in updates])
+            columns = ', '.join(updates.keys())
+            query = f"UPDATE threats SET {columns} = {placeholders} WHERE id = ?"
+            params.extend(updates.values())
             params.append(threat_id)
-            query = f"UPDATE threats SET {', '.join(updates)} WHERE id = ?"
             
             cursor = conn.execute(query, params)
             conn.commit()
@@ -375,7 +377,8 @@ def get_database_stats() -> Dict[str, Any]:
             
             # Count records in each table
             for table in ['threats', 'system_metrics', 'user_sessions']:
-                cursor = conn.execute(f'SELECT COUNT(*) as count FROM {table}')
+                # Use parameterized query for table names
+                cursor = conn.execute('SELECT COUNT(*) as count FROM ? WHERE 1=1', (table,))
                 stats[f'{table}_count'] = cursor.fetchone()['count']
             
             # Database file size

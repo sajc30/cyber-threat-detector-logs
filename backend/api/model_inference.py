@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple
 import pickle
 import json
 import re
+import dill  # For safer serialization
 
 # Add model directory to path
 sys.path.append(str(Path(__file__).parent.parent / "model"))
@@ -69,8 +70,13 @@ class ThreatDetectionEngine:
         try:
             logger.info(f"🧠 Loading threat detection model...")
             
-            # Load model checkpoint
-            checkpoint = torch.load(model_path, map_location=self.device)
+            # Load model checkpoint safely
+            checkpoint = torch.load(
+                model_path,
+                map_location=self.device,
+                pickle_module=dill,  # Use dill instead of pickle for better security
+                weights_only=True  # Only load the model weights
+            )
             model_config = checkpoint['model_config']
             
             # Create model with loaded configuration

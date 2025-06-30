@@ -21,6 +21,7 @@ from typing import Dict, List, Tuple, Optional
 import re
 import logging
 from pathlib import Path
+import dill  # For safer serialization
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -313,7 +314,6 @@ class CybersecurityFeatureExtractor:
     
     def save_feature_config(self, filepath: str):
         """Save feature extraction configuration"""
-        import pickle
         config = {
             'scaler': self.scaler,
             'feature_selector': self.feature_selector,
@@ -324,16 +324,14 @@ class CybersecurityFeatureExtractor:
         }
         
         with open(filepath, 'wb') as f:
-            pickle.dump(config, f)
+            dill.dump(config, f)
         
         logger.info(f"💾 Feature configuration saved to {filepath}")
     
     def load_feature_config(self, filepath: str):
         """Load feature extraction configuration"""
-        import pickle
-        
         with open(filepath, 'rb') as f:
-            config = pickle.load(f)
+            config = dill.load(f)  # Use dill instead of pickle for better security
         
         self.scaler = config['scaler']
         self.feature_selector = config['feature_selector']

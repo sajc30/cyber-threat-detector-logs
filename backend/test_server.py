@@ -10,6 +10,7 @@ try:
     from flask import Flask
     from flask_socketio import SocketIO
     import eventlet
+    import os
     print("✅ All imports successful")
 
     print("2. Creating Flask app...")
@@ -26,7 +27,8 @@ try:
     print("✅ Database initialized")
 
     print("5. Starting server...")
-    socketio.run(app, host='localhost', port=5001, debug=True)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    socketio.run(app, host='localhost', port=5001, debug=debug_mode)
 
 except Exception as e:
     print(f"❌ Error: {e}")
