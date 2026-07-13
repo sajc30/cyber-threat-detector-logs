@@ -5,6 +5,7 @@
 
 import io from 'socket.io-client';
 import toast from 'react-hot-toast';
+import { getDemoStatus } from './api';
 
 export interface ThreatAlert {
   id: string;
@@ -92,6 +93,13 @@ class WebSocketService {
    */
   connect(username?: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (getDemoStatus().isDemoMode) {
+        console.log('🎭 Demo Mode: Skipping WebSocket connection (no backend available)');
+        this.updateConnectionStatus({ status: 'disconnected', message: 'Demo mode - WebSocket disabled' });
+        reject(new Error('WebSocket disabled in demo mode'));
+        return;
+      }
+
       try {
         if (username) this.username = username;
 
