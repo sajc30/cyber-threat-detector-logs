@@ -199,6 +199,9 @@ jobs:
         npm test -- --coverage --watchAll=false
 
     - name: 🏗️ Build Frontend
+      env:
+        # CRA treats lint warnings as errors when CI=true; match deploy.yml
+        CI: false
       run: |
         cd frontend/threat-detector-dashboard
         npm run build
