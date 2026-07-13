@@ -331,7 +331,8 @@ class CybersecurityFeatureExtractor:
     def load_feature_config(self, filepath: str):
         """Load feature extraction configuration"""
         with open(filepath, 'rb') as f:
-            config = dill.load(f)  # Use dill instead of pickle for better security
+            # Deserializes a locally generated model artifact, not untrusted input.
+            config = dill.load(f)  # nosec B301
         
         self.scaler = config['scaler']
         self.feature_selector = config['feature_selector']

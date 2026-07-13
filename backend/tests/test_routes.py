@@ -6,6 +6,16 @@ Will be implemented during Phase 5: Testing & Validation.
 """
 
 import pytest
+
+# These tests were scaffolded for a planned Phase 5 API (/api/ingest,
+# /api/alerts, /api/feedback) that was never implemented; the actual API
+# exposes /api/detect, /api/detect/batch, /api/stats, etc.
+pytest.skip(
+    "Phase 5 REST API (/api/ingest, /api/alerts, /api/feedback) is not "
+    "implemented; actual API exposes /api/detect endpoints instead",
+    allow_module_level=True,
+)
+
 import json
 from unittest.mock import Mock, patch
 from backend.api.app import create_app

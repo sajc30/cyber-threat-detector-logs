@@ -44,22 +44,17 @@
     "@typescript-eslint/parser": "^5.0.0",
     "eslint": "^8.0.0",
     "eslint-plugin-react": "^7.0.0",
-    "gh-pages": "^6.3.0",
-    "jest": "^29.0.0",
-    "jest-environment-jsdom": "^29.0.0",
-    "ts-jest": "^29.4.0"
+    "gh-pages": "^6.3.0"
   },
   "jest": {
     "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/src/$1"
+      "^react-router-dom$": "<rootDir>/node_modules/react-router-dom/dist/index.js",
+      "^react-router/dom$": "<rootDir>/node_modules/react-router/dist/development/dom-export.js",
+      "^react-router$": "<rootDir>/node_modules/react-router/dist/development/index.js"
     },
-    "setupFilesAfterEnv": [
-      "<rootDir>/src/setupTests.ts"
-    ],
-    "testEnvironment": "jsdom",
-    "transform": {
-      "^.+\\.(ts|tsx)$": "ts-jest"
-    }
+    "transformIgnorePatterns": [
+      "node_modules/(?!(axios)/)"
+    ]
   },
   "eslintConfig": {
     "extends": [

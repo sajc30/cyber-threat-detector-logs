@@ -6,6 +6,16 @@ Will be implemented during Phase 5: Testing & Validation.
 """
 
 import pytest
+
+# These tests were scaffolded for a planned Phase 5 API (load_model,
+# infer_sequence, preprocess_sequence) that was never implemented; the
+# actual module exposes ThreatDetectionEngine / analyze_log instead.
+pytest.skip(
+    "Phase 5 model inference API (load_model/infer_sequence/preprocess_sequence) "
+    "is not implemented; module exposes ThreatDetectionEngine instead",
+    allow_module_level=True,
+)
+
 import torch
 import numpy as np
 from unittest.mock import Mock, patch

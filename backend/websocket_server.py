@@ -152,8 +152,6 @@ SAMPLE_LOGS = [
 
 def generate_live_logs():
     """Generate and stream live log entries"""
-    global monitoring_active
-    
     while monitoring_active:
         try:
             # Generate a random log entry

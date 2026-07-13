@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 venv/
+.venv/
 env/
 .env
 *.pyc
@@ -12,6 +13,12 @@ env/
 pip-log.txt
 pip-delete-this-directory.txt
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Auto-generated at import time by backend/api/app.py
+backend/templates/
 
 # Node artifacts
 node_modules/

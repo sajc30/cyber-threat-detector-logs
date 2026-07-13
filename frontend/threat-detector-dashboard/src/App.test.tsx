@@ -1,6 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { render } from '@testing-library/react';
 import App from './App';
 
 // Mock the websocket service
@@ -13,12 +12,8 @@ jest.mock('./services/websocketService', () => ({
 
 describe('App Component', () => {
   test('renders without crashing', () => {
-    render(
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    );
-    // Basic test to ensure the app renders
+    // App renders its own BrowserRouter, so no wrapper is needed
+    render(<App />);
     expect(document.body).toBeInTheDocument();
   });
 });

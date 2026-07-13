@@ -232,7 +232,9 @@ def update_threat_status(threat_id: int, blocked: bool = None, investigated: boo
                 update_pairs.append(f"{key} = ?")
                 params.append(value)
             
-            query = f"UPDATE threats SET {', '.join(update_pairs)} WHERE id = ?"
+            # Column names come from the fixed 'updates' dict keys above
+            # ('blocked'/'investigated'); all values are bound parameters.
+            query = f"UPDATE threats SET {', '.join(update_pairs)} WHERE id = ?"  # nosec B608
             params.append(threat_id)
             
             cursor = conn.execute(query, params)
