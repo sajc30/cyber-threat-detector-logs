@@ -8,6 +8,7 @@ on:
     branches: [ master, develop ]
   schedule:
     - cron: '0 6 * * 1'  # Weekly security scan
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: '3.9'
